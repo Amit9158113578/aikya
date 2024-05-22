@@ -1,0 +1,202 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<blueprint xmlns="http://www.osgi.org/xmlns/blueprint/v1.0.0"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:cxf="http://camel.apache.org/schema/blueprint/cxf"
+	xsi:schemaLocation="
+       http://www.osgi.org/xmlns/blueprint/v1.0.0 http://www.osgi.org/xmlns/blueprint/v1.0.0/blueprint.xsd
+        http://camel.apache.org/schema/blueprint/cxf http://camel.apache.org/schema/blueprint/cxf/camel-cxf.xsd
+       http://camel.apache.org/schema/blueprint http://camel.apache.org/schema/blueprint/camel-blueprint.xsd">
+
+	<cxf:rsServer id="KotakLifeProposalEndpoint" address="/kotaklifepolicyproposal"
+		serviceClass="com.idep.proposal.service.LifeProposalService"
+		loggingFeatureEnabled="true">
+		<cxf:providers>
+			<bean
+				class="org.apache.cxf.rs.security.cors.CrossOriginResourceSharingFilter" />
+		</cxf:providers>
+	</cxf:rsServer>
+
+	<camelContext streamCache="true" id="KotakLifeProposalContext"
+		xmlns="http://camel.apache.org/schema/blueprint">
+		<dataFormats>
+			<xmljson forceTopLevelObject="true" rootName="Session"
+				skipWhitespace="true" trimSpaces="true" skipNamespaces="true"
+				removeNamespacePrefixes="true" id="KotakLifejsonxml" />
+			<xmljson forceTopLevelObject="true" skipWhitespace="true"
+				trimSpaces="true" skipNamespaces="true" removeNamespacePrefixes="true"
+				id="KotakLifexmljson" />
+		</dataFormats>
+		<onException>
+			<exception>java.net.SocketTimeoutException</exception>
+			<exception>java.net.SocketException</exception>
+			<handled>
+				<constant>true</constant>
+			</handled>
+			<log message="Kotak Life proposal service seems to be down" />
+			<process ref="ProposalExceptionProcessor" customId="true"
+				id="KotakLifePropExcepProcessor" />
+			<marshal>
+				<json prettyPrint="true" library="Jackson" />
+			</marshal>
+		</onException>
+		<onException>
+			<exception>org.apache.camel.component.http4.HttpOperationFailedException
+			</exception>
+			<handled>
+				<constant>true</constant>
+			</handled>
+			<log
+				message="Kotak Life proposal Http Operation Failed : check input provided" />
+			<process ref="ProposalExceptionProcessor" customId="true"
+				id="KotakLifeHTTPPropException" />
+			<marshal>
+				<json prettyPrint="true" library="Jackson" />
+			</marshal>
+		</onException>
+		<onException>
+			<exception>com.idep.proposal.exception.processor.ExecutionTerminator
+			</exception>
+			<handled>
+				<constant>true</constant>
+			</handled>
+			<log message="Kotak Life proposal process terminated" />
+			<process ref="ProposalExceptionProcessor" customId="true"
+				id="KotakLifeGenericException" />
+			<marshal>
+				<json prettyPrint="true" library="Jackson" />
+			</marshal>
+		</onException>
+		<route id="KotakLifeProposalRoute">
+			<from uri="cxfrs:bean:KotakLifeProposalEndpoint" />
+			<choice id="KotakLifePolicyProposalDecision">
+				<when id="KotakLifeProposalReq">
+					<simple>${header.operationName} == "submitProposal"</simple>
+					<log message="submit proposal: ${body}"/>
+					<bean ref="LifeProposalServiceImpl" method="submitLifeProposal"
+						id="LifeProposalServiceImpl" />
+					<process ref="LifeProposalReqProcessor" id="LifeProposalReqProcessor" />
+					<when id="policyStatusSuccessPOSTSuccBASETrue">
+						<simple>${header.baseEnvStatus} == "true"</simple>
+						<log message="Base env status true" />
+						<to uri="direct:proposalCreateRequest" />
+					</when>
+					<when id="policyStatusSuccessPOSTSuccBASEFalse">
+						<simple>${header.baseEnvStatus} == "false"</simple>
+						<log message="Base env status false" />
+						<multicast id="KotakLifePropRequestMSG">
+							<pipeline>
+								<to uri="direct:proposalCreateRequest" />
+							</pipeline>
+							
+							
+							<pipeline>
+										<log message="LeadServiceStatus env status true" />
+										<to uri="direct:proposalCreateLeadRequest" />
+							</pipeline> 
+									
+							
+							
+							<pipeline>
+							
+								<log message="KotakLifeRequestTransformer Input ${body}"/>
+								<process ref="KotakLifeRequestTransformer" id="KotakLifeRequestTransformer" />
+								<log message="KotakLifeRequestTransformer Output ${body}"/>
+								
+								<log message="ProposalAddressProcessor Input ${body}"/>
+								<process ref="ProposalAddressProcessor" id="KotakLifeAddressProcessor" />
+								<log message="ProposalAddressProcessor Output ${body}"/>
+								
+								<process ref="ProposalCityValidator" id="KotakLifeAddressProcessor" />
+								
+								<process ref="ProposalHeightToFeetConverter" id="ProposalHeightToFeetConverter" />
+								
+								<log message="Kotak Life Proposal Request Mapper Input ${body}"/>
+								<to pattern="InOut" uri="xpathmapper://xpathmapdata" id="KotakProposalReqqMapper" />
+								<log message="Kotak Life Proposal Request Mapper Output: ${body}"/>
+												
+								<multicast id="KotakLifeMapperDataPassing" parallelProcessing="true">
+									<pipeline>
+										<process ref="CarrierProposalRequestDBStore" id="KotakCarrierProposalReqDBstore" />
+									</pipeline>
+
+									<pipeline>
+										<log message="1all Headers LifeProposal : quoteURL : ${headers}  "/>
+										<to pattern="InOut" uri="webservconsumer://invoke" id="KotakProposal" />
+										<multicast id="KotakLifeWebserverResponseStoringDB" parallelProcessing="true">
+											<pipeline>
+												<process ref="CarrierProposalResponseDBStore" id="KotakCarrierProposalResDBstore" />
+											</pipeline>
+											<pipeline>
+												<process ref="KotakLifeProposalResponseValidator" id="KotakLifeProposalResponseValidator" />
+												<process ref="LifeProposalResHandler" id="KotakLifeProposalResHandler" />
+												<log message="Kotak Life Proposal Response input to mapper: ${body}"/>
+												<to pattern="InOut" uri="xpathmapper://xpathmapdata" id="KotakProposalRespMapper" />
+												<log message="Kotak Life Proposal Response output of mapper: ${body}"/>
+												<process ref="ProposalRedirectionProcessor" id="LifeProposalRedirectionProcessor1" />
+												<process ref="ProposalReqDBStore" id="KotakLifeProposalResDBStore" />
+												<process ref="LifeProposalResProcessor" id="KotakLifeProposalResProcessor" />
+												<log message="Generated carrier service response sent to UI for further processing: ${body}"/>
+												<bean ref="LifeProposalServiceImpl" method="sendMessage" id="KotakLifeProposalSubmit" />
+											</pipeline>
+										</multicast>
+									</pipeline>								
+								</multicast>
+							</pipeline>
+						</multicast>
+					</when>
+				</when>
+				<when id="KotakLifePolicyCreator">
+					<simple>${header.operationName} == "createPolicy"</simple>
+					<bean ref="LifePolicyCreatorImpl" method="createLifePolicy"
+						id="LifePolicyCreatorImpl" />
+				</when>
+			</choice>
+		</route>
+
+		<route id="createProposalRoute">
+			<from uri="direct:proposalCreateRequest" />
+			<log message="createProposalRoute logging body ${body}"/>
+			<process ref="LifeProposalDBReqProcessor" id="KotakLifeProposalDBReqProcessorBASE" />
+			
+			<log message="Kotak Life Proposal mapper input: ${body}"/>
+			<to pattern="InOut" uri="xpathmapper://xpathmapdata" id="KotakLifeXPathMapperBASE" />
+			<log message="Kotak Life Proposal mapper output: ${body}"/>
+			
+			<process ref="ProposalReqDBStore" id="KotakLifeProposalReqDBStoreBASE" />
+			<process ref="LifeProposalResProcessor" id="KotakLifeProposalResProcessorBASE" />
+			<log message="Request sent to UI:  ${body}"/>
+			
+			<bean ref="LifeProposalServiceImpl" method="sendMessage"
+				id="KotakLifeProposalSubmitBASE" />
+			<marshal>
+				<json prettyPrint="true" library="Jackson" />
+			</marshal>
+		</route>
+		
+		
+			
+		<route id="CreateLeadRequest">
+			<from uri="direct:proposalCreateLeadRequest" />
+			<log message="Kotak Call to LeadRequestQ : ${body}"/>
+			<process ref="LifeProposalLeadRequestCreation" id="LifeProposalLeadRequestCreation" />
+			<log message="Kotak LifeProposalLeadRequestCreation Response input to mapper: ${body}"/>
+			<to pattern="InOut" uri="xpathmapper://xpathmapdata" id="KotakProposalRespMapper1" />
+			<log message="Kotak LifeProposalLeadRequestCreation Response output of mapper: ${body}"/>
+			<process ref="LifeProposalLeadHeaderSetter" id="LifeProposalLeadHeaderSetter" />
+			
+			<log message="LifeQuote Headers: ${headers}  "/>
+			<!-- <log message="Kotak LifeQuote : quoteURL : ${header.transactionName}  "/> -->
+			<bean ref="LifeProposalServiceImpl" method="sendMessage" id="KotakLifeProposalSubmit1" />
+			<to pattern="InOnly" uri="activemqSecondary:queue:LeadRequestQ?disableReplyTo=true" id="LeadRequestQ" />
+			
+			<!-- <log message="Output after queue: ${body}"/>
+			<log message="2all Headers LifeQuote : quoteURL : ${headers}  "/>
+			<log message="2AEGON LifeQuote : quoteURL : ${header.transactionName}  "/>
+			 -->
+			<process ref="LifeProposalResProcessor" id="KotakLifeProposalResProcessor1" />
+			<log message="Generated carrier rrsponse to ui: ${body}"/>
+			<bean ref="LifeProposalServiceImpl" method="sendMessage" id="KotakLifeProposalSubmit1" />
+											
+														
+		</route>
+	</camelContext>
+</blueprint>

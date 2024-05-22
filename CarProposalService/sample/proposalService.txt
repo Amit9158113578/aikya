@@ -1,0 +1,107 @@
+<!-- <?xml version="1.0" encoding="UTF-8"?>
+
+ 
+<bean id="CarProposalServiceImpl" class="com.sutrr.proposal.impl.service.CarProposalServiceImpl"/>
+<bean id="CarProposalReqProcessor" class="com.sutrr.proposal.req.processor.CarProposalReqProcessor"/>
+<bean id="CarProposalReqHandler" class="com.sutrr.proposal.req.processor.CarProposalReqHandler"/>
+<bean id="CarProposalResProcessor" class="com.sutrr.proposal.res.processor.CarProposalResProcessor"/> 
+<bean id="CarProposalResHandler" class="com.sutrr.proposal.res.processor.CarProposalResHandler"/>
+<bean id="CarPolicyCreatorImpl" class="com.sutrr.proposal.impl.service.CarPolicyCreatorImpl"/>
+<bean id="CarPolicyReqProcessor" class="com.sutrr.policy.req.processor.CarPolicyReqProcessor"/>
+<bean id="CarPolicyReqHandler" class="com.sutrr.policy.req.processor.CarPolicyReqHandler"/>
+<bean id="CarPolicyResProcessor" class="com.sutrr.policy.res.processor.CarPolicyResProcessor"/>
+<bean id="CarPolicyResHandler" class="com.sutrr.policy.res.processor.CarPolicyResHandler"/>
+<bean id="MultiJsonSupportProcessor" class="com.sutrr.proposal.multijson.support.MultiJsonSupportProcessor"/>
+<bean id="MasterProposalReqProcessor" class="com.sutrr.proposal.req.processor.MasterProposalReqProcessor"/>
+<bean id="RoyalSunCarProposalReqProcessor" class="com.sutrr.proposal.carrier.req.processor.RoyalSunCarProposalReqProcessor"/>
+<bean id="RoyalSunCarProposalResProcessor" class="com.sutrr.proposal.carrier.res.processor.RoyalSunCarProposalResProcessor"/>
+<bean id="RoyalSunCarProposalUpdateResProcessor" class="com.sutrr.proposal.carrier.res.processor.RoyalSunCarProposalUpdateResProcessor"/>
+<bean id="ConvertProposalJsonRequestToXML" class="com.sutrr.proposal.req.processor.ConvertProposalJsonRequestToXML"/>
+<bean id="ProposalExceptionProcessor" class="com.sutrr.proposal.exception.processor.ProposalExceptionProcessor"/>
+<bean id="CarCarrierResponseTransformer" class="com.sutrr.proposal.res.processor.CarCarrierResponseTransformer"/>
+<bean id="HdfcErgoCarProposalResProcessor" class="com.sutrr.proposal.carrier.res.processor.HdfcErgoCarProposalResProcessor"></bean>
+<bean id="CarProposalReqIntFormatProcessor" class="com.sutrr.proposal.req.processor.CarProposalReqIntFormatProcessor"/>
+<bean id="CarProposalDBReqProcessor" class="com.sutrr.proposal.req.processor.CarProposalDBReqProcessor"/>
+
+
+<bean id="jmsConnectionFactory"
+   class="org.apache.activemq.ActiveMQConnectionFactory">
+   <property name="brokerURL" value="tcp://localhost:61616" />
+   <property name="userName" value="p365super"/>
+   <property name="password" value="_iP@3ghv"/>
+</bean>
+ 
+<bean id="pooledConnectionFactory"
+   class="org.apache.activemq.pool.PooledConnectionFactory" init-method="start" destroy-method="stop">
+   <property name="maxConnections" value="30" />
+   <property name="connectionFactory" ref="jmsConnectionFactory" />
+</bean>
+ 
+<bean id="jmsConfig"
+   class="org.apache.camel.component.jms.JmsConfiguration">
+   <property name="connectionFactory" ref="pooledConnectionFactory"/>
+   <property name="concurrentConsumers" value="20"/>
+   <property name="mapJmsMessage" value="false" />
+   <property name="maxConcurrentConsumers" value="30" />
+   <property name="asyncConsumer" value="true" />
+   <property name="asyncStartListener" value="true" /> 
+</bean>
+ 
+<bean id="activemq"
+    class="org.apache.activemq.camel.component.ActiveMQComponent">
+    <property name="configuration" ref="jmsConfig"/>
+    if we are using transacted then enable CACHE_CONSUMER (if not using XA) to run faster
+         see more details at: http://camel.apache.org/jms
+         
+         &amp;includeSentJMSMessageID=true
+         messageIdEnabled=true&amp;
+         preserveMessageQos=true
+               <setBody>
+          <method ref="ProposalSubmitServiceImpl" method="submitProposal"/>
+      </setBody>
+      
+              <process ref="ProposalResProcessor" id="StarHealthProposalResProcessor"/>
+        <bean ref="ProposalSubmitServiceImpl" method="submitProposal" />
+        <bean ref="CarProposalServiceImpl" method="sendMessage" id="CarProposalSubmitQMsg"/>
+   
+    <property name="transacted" value="false"/>
+</bean>
+
+<camelContext streamCache="true" id="CarProposalContext" xmlns="http://camel.apache.org/schema/blueprint">
+  <route id="CarProposalRoute">
+    <from uri="cxfrs:bean:CarProposalEndpoint"/>
+    <choice id="PolicyProposalDecision">
+      <when id="CarProposalReq">
+        <simple>${header.operationName} == "submitCarProposal"</simple>
+        <process ref="MasterProposalReqProcessor" id="MasterProposalReqProcessor"/>
+        <recipientList>
+          <simple>${header.proposalService}</simple>
+        </recipientList>
+        <bean ref="CarProposalServiceImpl" method="sendMessage" id="ProposalResponse"/>
+      </when>
+      <when id="CarPolicyCreator">
+        <simple>${header.operationName} == "createPolicy"</simple>
+        <log message="request received to create policy"/>
+        <bean ref="CarPolicyCreatorImpl" method="createCarPolicy" id="CarPolicyCreate"/>
+        <process ref="CarPolicyReqProcessor" id="CarPolicyReqProcessor"/>
+        <to pattern="InOut" uri="sutrrmapper://mapdata" id="PolicyReqMapper"/>
+        <log message="sutrrMapper policy Request transformed Body  : ${body}"/>
+        <process ref="CarPolicyReqHandler" id="CarPolicyReqHandler"/>
+        <log message="message sent to Q for policy update  : ${body}"/>
+        <to pattern="InOnly" uri="activemq:queue:CarProposalUpdateResQ" id="CarPolicyResQueue"/>
+        <to pattern="InOnly" uri="activemq:queue:UserProfileQ" id="UserProfileQueue"/>
+        <process ref="CarPolicyResHandler" id="CarPolicyResHandler"/>
+        <to pattern="InOut" uri="sutrrmapper://mapdata" id="PolicyResMapperUI"/>
+        <log message="mapping introduced here to send only relevant fields to UI"/>
+        <process ref="CarPolicyResProcessor" id="CarPolicyResProcessor"/>
+        <bean ref="CarPolicyCreatorImpl" method="sendMessage" id="CarPolicySubmit"/>
+        <marshal>
+          <json prettyPrint="true" library="Jackson"/>
+        </marshal>
+      </when>
+    </choice>
+  </route>
+</camelContext>
+
+
+ -->

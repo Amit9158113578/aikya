@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<blueprint xmlns="http://www.osgi.org/xmlns/blueprint/v1.0.0"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xmlns:cxf="http://camel.apache.org/schema/blueprint/cxf"
+       xsi:schemaLocation="
+       http://www.osgi.org/xmlns/blueprint/v1.0.0 http://www.osgi.org/xmlns/blueprint/v1.0.0/blueprint.xsd
+        http://camel.apache.org/schema/blueprint/cxf http://camel.apache.org/schema/blueprint/cxf/camel-cxf.xsd
+       http://camel.apache.org/schema/blueprint http://camel.apache.org/schema/blueprint/camel-blueprint.xsd">
+ 
+<cxf:rsServer id="CarPolicyViewEndpoint" address="/carpolicydocview" serviceClass="com.idep.policydoc.service.PolicyDocViewerService" loggingFeatureEnabled="true">
+<cxf:providers>
+        <bean class="org.apache.cxf.rs.security.cors.CrossOriginResourceSharingFilter" />
+</cxf:providers>
+</cxf:rsServer>
+
+<bean id="PolicyDocViewerServiceImpl" class="com.idep.policydoc.impl.service.PolicyDocViewerServiceImpl"/>
+<bean id="PolicyDocViewerReqProcessor" class="com.idep.policydoc.req.processor.PolicyDocViewerReqProcessor"/>
+<bean id="PolicyDocJasperProcessor" class="com.idep.policydoc.req.processor.PolicyDocJasperProcessor"/>
+<bean id="PolicyDocViewerReqHandler" class="com.idep.policydoc.req.processor.PolicyDocViewerReqHandler"/>
+<bean id="PolicyDocViewerResProcessor" class="com.idep.policydoc.res.processor.PolicyDocViewerResProcessor"/>
+<bean id="PolicyDocResponseProcessor" class="com.idep.policydoc.res.processor.PolicyDocResponseProcessor"/>
+
+
+<camelContext streamCache="true" id="PolicyDocViewContext" xmlns="http://camel.apache.org/schema/blueprint">
+  	<route id="PolicyDocViewRoute">
+    	<from uri="cxfrs:bean:CarPolicyViewEndpoint"/>
+    	<bean ref="PolicyDocViewerServiceImpl" method="viewPolicyDocument" id="PolicyDocViewerServiceImpl"/>
+    	<process ref="PolicyDocViewerReqProcessor" id="PolicyDocViewerReqProcessor"/>
+    	<choice id="PolicyDocDecision">
+      	<when id="PolicyDocReq">
+        <simple>${header.reqFlag} == "True"</simple>
+    	<to pattern="InOut" uri="mapper://mapdata"/>
+    	<process ref="PolicyDocViewerReqHandler" id="PolicyDocViewerReqHandler"/>
+    	<process ref="PolicyDocViewerResProcessor" id="PolicyDocViewerResProcessor"/>
+    	<process ref="PolicyDocJasperProcessor" id="PolicyDocJasperProcessor"/>
+    	<recipientList>
+          		<simple>${header.pdfSignURL}</simple>
+        </recipientList>
+        <process ref="PolicyDocResponseProcessor" id="PolicyDocResponseProcessor"/>
+    	</when>
+    	<when id="PolicyDocReq">
+        <simple>${header.reqFlag} == "False"</simple>
+    	<bean ref="PolicyDocViewerServiceImpl" method="sendResponse" id="PolicyDocSendResponse"/>
+    	</when>
+    	</choice>
+    	<marshal>
+          <json prettyPrint="true" library="Jackson"/>
+        </marshal>
+    </route>
+  </camelContext>
+
+</blueprint>

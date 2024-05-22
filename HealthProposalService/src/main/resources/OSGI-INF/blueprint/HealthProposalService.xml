@@ -1,0 +1,266 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<blueprint xmlns="http://www.osgi.org/xmlns/blueprint/v1.0.0"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xmlns:cm="http://aries.apache.org/blueprint/xmlns/blueprint-cm/v1.1.0"
+        xmlns:cxf="http://camel.apache.org/schema/blueprint/cxf"
+       xsi:schemaLocation="
+       http://www.osgi.org/xmlns/blueprint/v1.0.0 http://www.osgi.org/xmlns/blueprint/v1.0.0/blueprint.xsd
+       http://camel.apache.org/schema/blueprint/cxf http://camel.apache.org/schema/blueprint/cxf/camel-cxf.xsd
+	   http://camel.apache.org/schema/blueprint http://camel.apache.org/schema/blueprint/camel-blueprint.xsd">
+
+<cxf:rsServer id="HealthProposalEndpoint" address="/healthpolicyproposal" 
+serviceClass="com.idep.proposal.service.ProposalSubmitService" loggingFeatureEnabled="true" >
+<cxf:providers>
+        <bean class="org.apache.cxf.rs.security.cors.CrossOriginResourceSharingFilter" />
+        
+</cxf:providers>
+</cxf:rsServer>
+
+<cm:property-placeholder persistent-id="AMQCustomProperties"> 
+ </cm:property-placeholder> 
+
+<bean id="jmsConnectionFactory"
+   class="org.apache.activemq.ActiveMQConnectionFactory">
+   <property name="brokerURL" value="${amqbroker.healthHost}:${amqbroker.healthPort}" />
+   <property name="userName" value="${amqbroker.healthUsername}"/>
+   <property name="password" value="${amqbroker.healthPassword}"/>
+</bean>
+
+<bean id="pooledConnectionFactory"
+   class="org.apache.activemq.pool.PooledConnectionFactory" init-method="start" destroy-method="stop">
+   <property name="maxConnections" value="${amq.maxConnections}" />
+   <property name="connectionFactory" ref="jmsConnectionFactory" />
+</bean>
+ 
+<bean id="jmsConfig"
+   class="org.apache.camel.component.jms.JmsConfiguration">
+   <property name="connectionFactory" ref="pooledConnectionFactory"/>
+   <property name="concurrentConsumers" value="${amq.concurrentConsumers}"/>
+   <property name="mapJmsMessage" value="${amq.mapJmsMessage}" />
+   <property name="maxConcurrentConsumers" value="${amq.maxConcurrentConsumers}" />
+   <property name="asyncConsumer" value="${amq.asyncConsumer}" />
+   <property name="asyncStartListener" value="${amq.asyncStartListener}" />
+</bean>
+ 
+<bean id="activemq"
+    class="org.apache.activemq.camel.component.ActiveMQComponent">
+    <property name="configuration" ref="jmsConfig"/>
+    <property name="transacted" value="${amq.transacted}"/>  
+    <property name="cacheLevelName" value="${amq.cacheLevelName}" />
+</bean>
+<bean id="jmsConnectionFactorySecondary"
+   class="org.apache.activemq.ActiveMQConnectionFactory">
+   <property name="brokerURL" value="${amqbroker.secondaryhost}:${amqbroker.secondaryport}" />
+   <property name="userName" value="${amqbroker.username}"/>
+   <property name="password" value="${amqbroker.password}"/>
+</bean>
+ 
+<bean id="pooledConnectionFactorySecondary"
+   class="org.apache.activemq.pool.PooledConnectionFactory" init-method="start" destroy-method="stop">
+  <property name="maxConnections" value="${amq.maxConnections}" /> 
+   <property name="connectionFactory" ref="jmsConnectionFactorySecondary" />
+</bean>
+<bean id="jmsConfigSecondary"
+   class="org.apache.camel.component.jms.JmsConfiguration">
+   <property name="connectionFactory" ref="pooledConnectionFactorySecondary"/>
+   <property name="concurrentConsumers" value="${amq.concurrentConsumers}"/>
+   <property name="mapJmsMessage" value="${amq.mapJmsMessage}" />
+   <property name="maxConcurrentConsumers" value="${amq.maxConcurrentConsumers}" />
+   <property name="asyncConsumer" value="${amq.asyncConsumer}" />
+   <property name="asyncStartListener" value="${amq.asyncStartListener}" />  
+</bean>
+ 
+ <bean id="activemqSecondary"
+    class="org.apache.activemq.camel.component.ActiveMQComponent">
+    <property name="configuration" ref="jmsConfigSecondary"/>
+    <property name="transacted" value="${amq.transacted}"/>
+    <property name="cacheLevelName" value="${amq.cacheLevelName}" />
+</bean>
+<bean id="HealthProposalhutdownStrategy" class="org.apache.camel.impl.DefaultShutdownStrategy">
+        <property name="timeout" value="30"/>
+</bean>
+
+<!-- <bean id="http" class="org.apache.camel.component.http4.HttpComponent">
+    <property name="camelContext" ref="HealthProposalContext"/>
+    <property name="httpConnectionManager" ref="proposalHttpConnectionManager"/>
+</bean>
+
+<bean id="https" class="org.apache.camel.component.http4.HttpComponent">
+    <property name="camelContext" ref="HealthProposalContext"/>
+    <property name="httpConnectionManager" ref="proposalHttpConnectionManager"/>
+</bean>
+ --> 
+<bean id="proposalHttpConnectionManager" class="org.apache.commons.httpclient.MultiThreadedHttpConnectionManager">
+    <property name="params" ref="proposalHttpConnectionManagerParams"/>
+</bean>
+ 
+<bean id="proposalHttpConnectionManagerParams" class="org.apache.commons.httpclient.params.HttpConnectionManagerParams">
+    <property name="defaultMaxConnectionsPerHost" value="5"/>
+    <property name="maxTotalConnections" value="100" />
+    <property name="connectionTimeout" value="10000" />
+    <property name="soTimeout" value="100000"/>     	
+</bean>
+
+<bean id="ProposalSubmitServiceImpl" class="com.idep.proposal.impl.service.ProposalSubmitServiceImpl"/> 
+<bean id="PolicySubmitServiceImpl" class="com.idep.proposal.impl.service.PolicySubmitServiceImpl"/>
+<bean id="ProposalReqProcessor" class="com.idep.proposal.req.processor.ProposalReqProcessor"/>
+<bean id="ProposalReqHandler" class="com.idep.proposal.req.processor.ProposalReqHandler"/>
+<bean id="ProposalResHandler" class="com.idep.proposal.res.processor.ProposalResHandler"/>
+<bean id="ProposalResProcessor" class="com.idep.proposal.res.processor.ProposalResProcessor"/>
+<bean id="HealthMasterProposalReqProcessor" class="com.idep.proposal.req.processor.HealthMasterProposalReqProcessor"/>
+<bean id="HealthMasterPolicyReqProcessor" class="com.idep.policy.req.processor.HealthMasterPolicyReqProcessor"/>
+<bean id="HealthPolicyReqProcessor" class="com.idep.policy.req.processor.HealthPolicyReqProcessor"/>
+<bean id="HealthPolicyReqHandler" class="com.idep.policy.req.processor.HealthPolicyReqHandler"/>
+<bean id="HealthPolicyResProcessor" class="com.idep.policy.res.processor.HealthPolicyResProcessor"/>
+<bean id="HealthPolicyResHandler" class="com.idep.policy.res.processor.HealthPolicyResHandler"/>
+<bean id="HealthProposalDBReqProcessor" class="com.idep.proposal.req.processor.HealthProposalDBReqProcessor"/>
+<bean id="ProposalReqDBStore" class="com.idep.proposal.data.commit.ProposalReqDBStore"/>
+<bean id="ProposalExceptionProcessor" class="com.idep.policy.exception.processor.ProposalExceptionProcessor"/>
+<bean id="SOAPRequestFormatter" class="com.idep.policy.req.processor.SOAPRequestFormatter"/>
+<bean id="HealthSoapResFormatter" class="com.idep.policy.res.processor.HealthSoapResFormatter"/>
+<bean id="HealthProposalResProcessor" class="com.idep.proposal.res.processor.HealthProposalResProcessor"/>
+<bean id="HealthProposalAttributeReqProcessor" class="com.idep.policy.req.processor.HealthProposalAttributeReqProcessor"/>
+<bean id="ReligareSOAPResponseFormatter" class="com.idep.proposal.carrier.res.processor.ReligareSOAPResponseFormatter"/>
+<bean id="ReligareSOAPRequestFormatter" class="com.idep.proposal.carrier.req.processor.ReligareSOAPRequestFormatter"/>
+<bean id="ProposerDataProcessor" class="com.idep.proposal.carrier.req.processor.ProposerDataProcessor"/>
+<bean id="ReligarePolicySOAPRequestFormatter" class="com.idep.policy.carrier.req.processor.ReligarePolicySOAPRequestFormatter"/>
+<bean id="ReligarePolicySOAPResponseFormatter" class="com.idep.policy.carrier.res.processor.ReligarePolicySOAPResponseFormatter"/>
+<bean id="CarrierPolicyResponseProcessor" class="com.idep.policy.carrier.res.processor.CarrierPolicyResponseProcessor"/>
+<bean id="UserProfileReqProcessor" class="com.idep.user.profile.processor.UserProfileReqProcessor"/>
+<bean id="HDFCErgoInsuredmemberProcessor" class="com.idep.proposal.carrier.req.processor.HDFCErgoInsuredmemberProcessor"/>
+<bean id="HDFCErgoHealthPlanCodeProcessor" class="com.idep.proposal.carrier.req.processor.HDFCErgoHealthPlanCodeProcessor"/>
+<bean id="HealthPorposalPlanTypeProcessor" class="com.idep.proposal.req.processor.HealthPorposalPlanTypeProcessor"/>
+<bean id="PolicyDocumentReqQListener" class="com.idep.policy.queue.listener.PolicyDocumentReqQListener"/>
+<bean id="PolicyDocumentReqProcessor" class="com.idep.policy.document.req.processor.PolicyDocumentReqProcessor"/>
+<bean id="PolicyDocumentResProcessor" class="com.idep.policy.document.res.processor.PolicyDocumentResProcessor"/>
+<bean id="ReligarePolicyDocSOAPRequestFormatter" class="com.idep.policy.document.req.processor.ReligarePolicyDocSOAPRequestFormatter"/>
+<bean id="ReligarePolicyDocSOAPResponseFormatter" class="com.idep.policy.document.res.processor.ReligarePolicyDocSOAPResponseFormatter"/>
+<bean id="UserProfilePolicyUpdateProcessor" class="com.idep.user.profile.processor.UserProfilePolicyUpdateProcessor"/>
+<bean id="HDFCHealthProposalResponseValidator" class="com.idep.proposal.carrier.res.processor.HDFCHealthProposalResponseValidator"/>
+<bean id="PaymentResponseValidator" class="com.idep.policy.payment.res.processor.PaymentResponseValidator"/>
+<bean id="PaymentResponseUpdateProcessor" class="com.idep.policy.payment.res.processor.PaymentResponseUpdateProcessor"/>
+<bean id="HealthGeneratePolicyNumberProcessor" class="com.idep.proposal.req.processor.HealthGeneratePolicyNumberProcessor"/>
+<bean id="CignaSOAPRequestFormatter" class="com.idep.policy.carrier.req.processor.CignaSOAPRequestFormatter"/>
+<bean id="XMLCharEmitter" class="com.idep.proposal.req.processor.XMLCharEmitter"/>
+<bean id="CignaHealthProposalRequestFormatter" class="com.idep.proposal.carrier.req.processor.CignaHealthProposalRequestFormatter"/>
+<bean id="CignaSOAPResponseFormatter" class="com.idep.policy.carrier.res.processor.CignaSOAPResponseFormatter"/>
+<bean id="CignaProposalDataProcessor" class="com.idep.proposal.carrier.req.processor.CignaProposalDataProcessor"/>
+<bean id="CignaValidateProposalSOAPReqFormatter" class="com.idep.policy.carrier.req.processor.CignaValidateProposalSOAPReqFormatter"/>
+<bean id="CignaValidateProposalSOAPResFormatter" class="com.idep.policy.carrier.res.processor.CignaValidateProposalSOAPResFormatter"/>
+<bean id="CignaInsuredMemberDataProcessor" class="com.idep.policy.carrier.req.processor.CignaInsuredMemberDataProcessor"/>
+<bean id="CarrierProposalResponseHandler" class="com.idep.proposal.res.processor.CarrierProposalResponseHandler"/>
+<bean id="StarHealthTokenRefProcessor" class="com.idep.proposal.carrier.req.processor.StarHealthTokenRefProcessor"/>
+<bean id="StarHealthTokenResProcessor" class="com.idep.proposal.carrier.res.processor.StarHealthTokenResProcessor"/>
+<bean id="StarHealthInsuredMemberProcessor" class="com.idep.proposal.carrier.req.processor.StarHealthInsuredMemberProcessor"/>
+<bean id="StarHealthProposerDataProcessor" class="com.idep.proposal.carrier.req.processor.StarHealthProposerDataProcessor"/>
+<bean id="CignaValidateProposalReqModify" class="com.idep.policy.carrier.req.processor.CignaValidateProposalReqModify"/>
+<bean id="CignaSaveProposalRequestFormatter" class="com.idep.proposal.carrier.req.processor.CignaSaveProposalRequestFormatter"/>
+<bean id="CignaSaveProposalReqProcessor" class="com.idep.policy.carrier.req.processor.CignaSaveProposalReqProcessor"/>
+<bean id="CignaSumInsuredReqProcessor" class="com.idep.proposal.carrier.req.processor.CignaSumInsuredReqProcessor"/>
+<bean id="ProposerReqRiderProcessor" class="com.idep.proposal.req.processor.ProposerReqRiderProcessor"/>
+<bean id="HealthPaymentProcessor" class="com.idep.policy.payment.res.processor.HealthPaymentProcessor"/>
+<bean id="ABHIProposalReqStoreProcessor" class="com.idep.policy.carrier.req.processor.ABHIProposalReqStoreProcessor"/>
+<bean id="ABHIProposalPolicyProcessor" class="com.idep.policy.carrier.req.processor.ABHIProposalPolicyProcessor"/>
+<bean id="ABHIMemberCodeProcessor" class="com.idep.policy.carrier.res.processor.ABHIMemberCodeProcessor"/>
+<bean id="ABHIProposalResValidator" class="com.idep.policy.carrier.res.processor.ABHIProposalResValidator"/>
+<bean id="CignaPolicyDocumentReqProcessor" class="com.idep.policy.document.req.processor.CignaPolicyDocumentReqProcessor"/>
+<bean id="CarrierDataLoader" class="com.idep.proposal.carrier.req.processor.CarrierDataLoader"/>
+<bean id="HDFCUWResponseProcessor" class="com.idep.policy.carrier.res.processor.HDFCUWResponseProcessor"/>
+<bean id="ABHIUWResHandler" class="com.idep.policy.carrier.res.processor.ABHIUWResHandler"/>
+<bean id="StarHealthDocumentReqProcessor" class="com.idep.policy.document.req.processor.StarHealthDocumentReqProcessor"/>
+<bean id="ABHIMemberPEDProcessor" class="com.idep.proposal.carrier.req.processor.ABHIMemberPEDProcessor"/>
+<bean id="StarHealthGetCityProcessor" class="com.idep.proposal.carrier.req.processor.StarHealthGetCityProcessor"/>
+<bean id="FutureHealthProposerDataProcessor" class="com.idep.proposal.carrier.req.processor.FutureHealthProposerDataProcessor"/>
+<bean id="SoapReqFormatter" class="com.idep.proposal.req.processor.SoapReqFormatter"/>
+<bean id="HealthProposalReqLogProcessor" class="com.idep.proposal.log.processor.HealthProposalReqLogProcessor"/>
+<bean id="HealthProposalServiceReqLogProcessor" class="com.idep.proposal.log.processor.HealthProposalServiceReqLogProcessor"/>
+<bean id="HealthProposalServiceResLogProcessor" class="com.idep.proposal.log.processor.HealthProposalServiceResLogProcessor"/>
+<bean id="HealthPolicyLogProcessor" class="com.idep.proposal.log.processor.HealthPolicyLogProcessor"/>
+<bean id="HealthPolicyResLogProcessor" class="com.idep.proposal.log.processor.HealthPolicyResLogProcessor"/>
+<bean id="HealthPolicyServiceReqLog" class="com.idep.proposal.log.processor.HealthPolicyServiceReqLog"/>
+<bean id="HealthPolicyServiceResLog" class="com.idep.proposal.log.processor.HealthPolicyServiceResLog"/>
+<bean id="HealthPolicyDocDownloadLogReq" class="com.idep.proposal.log.processor.HealthPolicyDocDownloadLogReq"/>
+<bean id="HealthPolicyDocDownloadLogRes" class="com.idep.proposal.log.processor.HealthPolicyDocDownloadLogRes"/>
+<bean id="CarrierSoapReqFormatterProcessor" class="com.idep.policy.carrier.req.processor.CarrierSoapReqFormatterProcessor"/>
+<bean id="FutureGeneraliResponseProcessor" class="com.idep.policy.carrier.req.processor.FutureGeneraliResponseProcessor"/>
+<bean id="FutureHealthPolicyProcessor" class="com.idep.policy.carrier.req.processor.FutureHealthPolicyProcessor"/>
+<bean id="RSHealthResponseProcessor" class="com.idep.policy.carrier.req.processor.RSHealthResponseProcessor"/>
+<bean id="HealthProposalElderMemberDataProcessor" class="com.idep.proposal.req.processor.HealthProposalElderMemberDataProcessor"/>
+<bean id="ProposalAddressProcessor" class="com.idep.proposal.carrier.req.processor.ProposalAddressProcessor"/>
+<bean id="StarHealthPolicyReqProcessor" class="com.idep.policy.carrier.req.processor.StarHealthPolicyReqProcessor"/>
+<bean id="StarHealthPolicyurlProcessor" class="com.idep.policy.carrier.req.processor.StarHealthPolicyurlProcessor"/>
+<bean id="StarHealthPolicyResProcessor" class="com.idep.policy.carrier.res.processor.StarHealthPolicyResProcessor"/>
+<bean id="CarrierCityLoader" class="com.idep.proposal.carrier.req.processor.CarrierCityLoader"/>
+<bean id="StarHealthPaymentResProcessor" class="com.idep.policy.carrier.res.processor.StarHealthPaymentResProcessor"/>
+<bean id="StarPaymentReqProcessor" class="com.idep.policy.carrier.res.processor.StarPaymentReqProcessor"/>
+<bean id="FutureSoapResFormatter" class="com.idep.policy.carrier.res.processor.FutureSoapResFormatter"/>
+<bean id="FutureGenInsuredPolicyReqProcessor" class="com.idep.policy.carrier.req.processor.FutureGenInsuredPolicyReqProcessor"/>
+<bean id="CarrierServiceExceptionResponseHandler" class="com.idep.proposal.res.processor.CarrierServiceExceptionResponseHandler"/>
+<bean id="RoyalProposalRequestFormatter" class="com.idep.proposal.carrier.req.processor.RoyalProposalRequestFormatter"/>
+<bean id="RSGProposalReqProcessor" class="com.idep.policy.carrier.req.processor.RSGProposalReqProcessor"/>
+<bean id="ReligareHealthProposalResponseValidator" class="com.idep.proposal.carrier.res.processor.ReligareHealthProposalResponseValidator"/>
+
+<bean id="NIAQuestionRiderProcessor" class="com.idep.proposal.carrier.req.processor.NIAQuestionRiderProcessor"/>
+
+<bean id="NIAPreHealthRequestProposalProcessor" class="com.idep.policy.carrier.req.processor.NIAPreHealthRequestProposalProcessor"/>
+
+<bean id="NIASOAPRequestFormatter" class="com.idep.policy.carrier.req.processor.NIASOAPRequestFormatter"/>
+<bean id="NIASOAPResponseFormatter" class="com.idep.policy.carrier.res.processor.NIASOAPResponseFormatter"/>
+<bean id="NIAHealthProposalRequestFormatter" class="com.idep.proposal.carrier.req.processor.NIAHealthProposalRequestFormatter"/>
+<bean id="NIAValidateProposalSOAPReqFormatter" class="com.idep.policy.carrier.req.processor.NIAValidateProposalSOAPReqFormatter"/>
+<bean id="NIAHealthvalidateProposalRequestFormatter" class="com.idep.proposal.carrier.req.processor.NIAHealthvalidateProposalRequestFormatter"/>
+
+<bean id="NIAApprovalPROPOSALFORMATTER" class="com.idep.policy.req.processor.NIAApprovalPROPOSALFORMATTER"/>
+<bean id="NIAFetchHealthPolicyProcessor" class="com.idep.policy.carrier.req.processor.NIAFetchHealthPolicyProcessor"/>
+<bean id="HealthPrepareSoapReqProcessor" class="com.idep.proposal.req.processor.HealthPrepareSoapReqProcessor"/>
+<bean id="HealthPrepareSoapResProcessor" class="com.idep.proposal.carrier.res.processor.HealthPrepareSoapResProcessor"/>
+<bean id="NIAFormViewDocURL" class="com.idep.policy.carrier.req.processor.NIAFormViewDocURL"/>
+
+<bean id="NIAApprovalProposalSOAPResFormatter" class="com.idep.policy.carrier.res.processor.NIAApprovalProposalSOAPResFormatter"/>
+<bean id="StarCarrierProposalResponseHandler" class="com.idep.proposal.res.processor.StarCarrierProposalResponseHandler"/>
+<bean id="ConfigurationLoaderProcessor" class="com.idep.proposal.carrier.req.processor.ConfigurationLoaderProcessor"/>
+<bean id="RequestValidator" class="com.idep.proposal.carrier.req.processor.RequestValidator"/>
+<bean id="HDFCSOAPRequestFormatter" class="com.idep.proposal.carrier.req.processor.HDFCSOAPRequestFormatter"/>
+<bean id="InvokeCarrierProcessor" class="com.idep.proposal.carrier.req.processor.InvokeCarrierProcessor"/>
+<bean id="HDFCCarrierServiceResponseHnadler" class="com.idep.proposal.carrier.req.processor.HDFCCarrierServiceResponseHnadler"/>
+<bean id="HDFCQuoteResProcessor" class="com.idep.proposal.carrier.req.processor.HDFCQuoteResProcessor"/>
+<bean id="PolicyConfigurationLoaderProcessor" class="com.idep.policy.req.processor.PolicyConfigurationLoaderProcessor"/>
+<bean id="HDFCPolicySOAPRequestFormatter" class="com.idep.policy.req.processor.HDFCPolicySOAPRequestFormatter"/>
+<bean id="HDFCPolicyResProcessor" class="com.idep.policy.req.processor.HDFCPolicyResProcessor"/>
+<bean id="PolicyDocJasperProcessor" class="com.idep.policy.req.processor.PolicyDocJasperProcessor"/>
+
+
+<camelContext id="HealthProposalContext" xmlns="http://camel.apache.org/schema/blueprint">
+  <route id="HealthProposalRoute">
+    <from uri="cxfrs:bean:HealthProposalEndpoint?continuationTimeout=120000" />
+    <choice id="HealthPolicyProposalDecision">
+      <when id="HealthProposalReq">
+        <simple>${header.operationName} == "submitHealthProposal"</simple>
+        <log message =" All headers : ${headers}"/>
+        <process ref="HealthMasterProposalReqProcessor" id="HealthMasterProposalReqProcessor"/>
+        <recipientList>
+          <simple>${header.healthproposalService}</simple>
+        </recipientList>
+        <bean ref="ProposalSubmitServiceImpl" method="sendMessage" id="HealthProposalResponse"/>
+      </when>
+      <when id="HealthPolicyReq">
+        <simple>${header.operationName} == "createPolicy"</simple>
+        <process ref="HealthMasterPolicyReqProcessor" id="HealthMasterPolicyReqProcessor"/>
+        <recipientList>
+          <simple>${header.healthproposalService}</simple>
+        </recipientList>
+        <bean ref="ProposalSubmitServiceImpl" method="sendMessage" id="HealthPolicyResponse"/>
+      </when>
+        <when id="validatePaymentStatusReq">
+        <simple>${header.operationName} == "validatePaymentStatus"</simple>
+        <process ref="HealthMasterPolicyReqProcessor" id="validatePaymentStatusReqProcessor"/>
+        <recipientList>
+          <simple>${header.healthproposalService}</simple>
+        </recipientList>
+        <bean ref="ProposalSubmitServiceImpl" method="sendMessage" id="HealthPolicyResponse"/>
+      </when>
+    </choice>
+  </route>
+</camelContext>
+
+</blueprint>

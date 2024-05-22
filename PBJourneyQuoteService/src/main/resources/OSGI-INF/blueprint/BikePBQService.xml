@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<blueprint xmlns="http://www.osgi.org/xmlns/blueprint/v1.0.0"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xmlns:cm="http://aries.apache.org/blueprint/xmlns/blueprint-cm/v1.1.0"
+       xmlns:cxf="http://camel.apache.org/schema/blueprint/cxf"
+       xsi:schemaLocation="
+       http://www.osgi.org/xmlns/blueprint/v1.0.0 http://www.osgi.org/xmlns/blueprint/v1.0.0/blueprint.xsd
+        http://camel.apache.org/schema/blueprint/cxf http://camel.apache.org/schema/blueprint/cxf/camel-cxf.xsd
+       http://camel.apache.org/schema/blueprint http://camel.apache.org/schema/blueprint/camel-blueprint.xsd">
+   <camelContext xmlns="http://camel.apache.org/schema/blueprint" trace="false">
+     <threadPool  poolSize="10" maxPoolSize="50" maxQueueSize="50" keepAliveTime="25" id="PBQBikeRequestThread" threadName="BikePBQThread" rejectedPolicy="DiscardOldest" />
+    	<route id="BikeProfessionalBaseRoute">
+     		<from uri="activemq:queue:PBQBikeRequestQ" id="BikeQuoteCommonReqQ">
+      		<description/>
+   		 </from>
+		     <bean ref="PBQuoteListener" method="onMessage" id="PBBikeQuoteReqBean"/>
+		     <log message="pbq bikequote request:${body}"></log>
+		      <process ref="BikeQuoteRequestProcessor" id="BikeQuoteRequestProcessor"/>
+		       <to pattern="InOut" uri="xpathmapper://xpathmapdata" id="BikeQuoteRequestMapper"/>
+		       <log message="bikequote request:${body}"></log>
+			          	<process ref="LobRequestProcessor" id="LobRequestProcessor"/>
+		       <to pattern="InOut" uri="webservconsumer://invoke" id="BIKEQUOTEURL"/>
+		     	<process ref="PBQuoteResponseProcessor" id="PBBikeQuoteResponseProcessor"/>
+		     	<multicast id="PBBikeQuoteResponseMSG" parallelProcessing="true">
+		       	<pipeline>
+		        		<log message="PBQ bike quote carrier service response ${body}"></log>
+						 <wireTap uri="activemqSecondary:queue:PBQBikeResponseQ?includeSentJMSMessageID=true"/>
+		       			<to pattern="InOnly" uri="activemq:queue:PBQBikeResponseQ?timeToLive=120000&amp;includeSentJMSMessageID=true"/>
+		      		</pipeline>
+		      		 <pipeline>
+		      		    <process ref="PBQuoteDBSender" id="PBBikeQuoteDBSender"/>
+		      </pipeline>
+		    </multicast> 
+    </route>
+  </camelContext>
+
+</blueprint>
+

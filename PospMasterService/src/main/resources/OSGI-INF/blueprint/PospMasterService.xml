@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<blueprint xmlns="http://www.osgi.org/xmlns/blueprint/v1.0.0"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xmlns:camel="http://camel.apache.org/schema/blueprint"
+       xmlns:cxf="http://camel.apache.org/schema/blueprint/cxf"
+	   xmlns:cm="http://aries.apache.org/blueprint/xmlns/blueprint-cm/v1.1.0"
+       xmlns:jaxrs="http://cxf.apache.org/blueprint/jaxrs" 
+       xsi:schemaLocation=" 
+       http://www.osgi.org/xmlns/blueprint/v1.0.0 http://www.osgi.org/xmlns/blueprint/v1.0.0/blueprint.xsd
+       http://camel.apache.org/schema/blueprint/cxf http://camel.apache.org/schema/blueprint/cxf/camel-cxf.xsd
+       http://cxf.apache.org/blueprint/jaxrs http://cxf.apache.org/schemas/blueprint/jaxrs.xsd
+       http://camel.apache.org/schema/blueprint http://camel.apache.org/schema/blueprint/camel-blueprint.xsd">
+
+<cxf:rsServer id="pospserviceEndpoint"  address="/pospauthrestservices" serviceClass="com.idep.webservice.redirect.WebServiceRedirect" loggingFeatureEnabled="true" >
+<cxf:providers>
+        <bean class="org.apache.cxf.rs.security.cors.CrossOriginResourceSharingFilter" />
+ </cxf:providers>
+ </cxf:rsServer>
+ 
+
+<bean id="pospMasterReqProcessor" class="com.idep.webservice.redirect.PospMasterReqProcessor"/>
+<bean id="pospServiceResponse" class="com.idep.webservice.impl.ServiceResponse"/>
+<bean id="pospLeadReqQProcessor" class="com.idep.lead.req.processor.LeadReqQProcessor"/>
+
+<bean id="shutdownStrategy" class="org.apache.camel.impl.DefaultShutdownStrategy">
+        <property name="timeout" value="30"/>
+</bean>
+
+<cm:property-placeholder persistent-id="AMQCustomProperties"> 
+ </cm:property-placeholder> 
+
+<bean id="jmsConnectionFactory"
+   class="org.apache.activemq.ActiveMQConnectionFactory">
+   <property name="brokerURL" value="${amqbroker.host}:${amqbroker.port}" />
+   <property name="userName" value="${amqbroker.username}"/>
+   <property name="password" value="${amqbroker.password}"/>
+</bean>
+ 
+<bean id="pooledConnectionFactory"
+   class="org.apache.activemq.pool.PooledConnectionFactory" init-method="start" destroy-method="stop">
+   <property name="maxConnections" value="${amq.maxConnections}" />
+   <property name="connectionFactory" ref="jmsConnectionFactory" />
+</bean>
+ 
+<bean id="jmsConfig"
+   class="org.apache.camel.component.jms.JmsConfiguration">
+   <property name="connectionFactory" ref="pooledConnectionFactory"/>
+   <property name="concurrentConsumers" value="${amq.concurrentConsumers}"/>
+   <property name="mapJmsMessage" value="${amq.mapJmsMessage}" />
+   <property name="maxConcurrentConsumers" value="${amq.maxConcurrentConsumers}" />
+   <property name="asyncConsumer" value="${amq.asyncConsumer}" />
+   <property name="asyncStartListener" value="${amq.asyncStartListener}" />  
+</bean>
+ 
+ <bean id="activemq"
+    class="org.apache.activemq.camel.component.ActiveMQComponent">
+    <property name="configuration" ref="jmsConfig"/>
+    <property name="transacted" value="${amq.transacted}"/>
+    <property name="cacheLevelName" value="${amq.cacheLevelName}" />
+</bean>
+
+<camelContext id="PospMasterIntegrationService" xmlns="http://camel.apache.org/schema/blueprint">
+  <route id="MasterServiceRoute">
+    <from uri="cxfrs:bean:pospserviceEndpoint?continuationTimeout=90000" id="PospMasterServiceEndPoint"/>
+    <convertBodyTo type="java.lang.String" id="InputConverter"/>
+    <multicast id="PospMessageSender" parallelProcessing="true">
+    	<pipeline id="PospLeadsQMsg">
+        	<process ref="pospLeadReqQProcessor" id="LeadRequestQProcessor"/>
+      	</pipeline>
+      	<pipeline id="PospServiceMessage">
+        	<process ref="pospMasterReqProcessor" id="pospMasterRequestProcessor"/>
+        	<recipientList stopOnException="true" id="pospMasterServiceInvoke">
+          		<simple>${header.MServiceURL}</simple>
+        	</recipientList>
+        	<bean ref="pospServiceResponse" method="sendResponse" id="PospConfigResponse"/>
+      	</pipeline>
+    </multicast>
+  </route>
+</camelContext>
+
+</blueprint>

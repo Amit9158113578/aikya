@@ -1,0 +1,143 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<blueprint xmlns="http://www.osgi.org/xmlns/blueprint/v1.0.0"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:cxf="http://camel.apache.org/schema/blueprint/cxf"
+	xsi:schemaLocation="
+       http://www.osgi.org/xmlns/blueprint/v1.0.0 http://www.osgi.org/xmlns/blueprint/v1.0.0/blueprint.xsd
+        http://camel.apache.org/schema/blueprint/cxf http://camel.apache.org/schema/blueprint/cxf/camel-cxf.xsd
+       http://camel.apache.org/schema/blueprint http://camel.apache.org/schema/blueprint/camel-blueprint.xsd">
+
+	<cxf:rsServer id="EdelweissLifeProposalEndpoint" address="/edelweisslifepolicyproposal"
+		serviceClass="com.idep.proposal.service.LifeProposalService"
+		loggingFeatureEnabled="true">
+		<cxf:providers>
+			<bean
+				class="org.apache.cxf.rs.security.cors.CrossOriginResourceSharingFilter" />
+		</cxf:providers>
+	</cxf:rsServer>
+
+	<camelContext streamCache="true" id="EdelweissLifeProposalContext"
+		xmlns="http://camel.apache.org/schema/blueprint">
+		<dataFormats>
+			<xmljson forceTopLevelObject="true" rootName="Session"
+				skipWhitespace="true" trimSpaces="true" skipNamespaces="true"
+				removeNamespacePrefixes="true" id="EdelweissLifejsonxml" />
+			<xmljson forceTopLevelObject="true" skipWhitespace="true"
+				trimSpaces="true" skipNamespaces="true" removeNamespacePrefixes="true"
+				id="EdelweissLifexmljson" />
+		</dataFormats>
+		<onException>
+			<exception>java.net.SocketTimeoutException</exception>
+			<exception>java.net.SocketException</exception>
+			<handled>
+				<constant>true</constant>
+			</handled>
+			<log message="Edelweiss Life proposal service seems to be down" />
+			<process ref="ProposalExceptionProcessor" customId="true"
+				id="EdelweissLifePropExcepProcessor" />
+			<marshal>
+				<json prettyPrint="true" library="Jackson" />
+			</marshal>
+		</onException>
+		<onException>
+			<exception>org.apache.camel.component.http4.HttpOperationFailedException
+			</exception>
+			<handled>
+				<constant>true</constant>
+			</handled>
+			<log
+				message="Edelweiss Life proposal Http Operation Failed : check input provided" />
+			<process ref="ProposalExceptionProcessor" customId="true"
+				id="EdelweissLifeHTTPPropException" />
+			<marshal>
+				<json prettyPrint="true" library="Jackson" />
+			</marshal>
+		</onException>
+		<onException>
+			<exception>com.idep.proposal.exception.processor.ExecutionTerminator
+			</exception>
+			<handled>
+				<constant>true</constant>
+			</handled>
+			<log message="Edelweiss Life proposal process terminated" />
+			<process ref="ProposalExceptionProcessor" customId="true"
+				id="EdelweissLifeGenericException" />
+			<marshal>
+				<json prettyPrint="true" library="Jackson" />
+			</marshal>
+		</onException>
+		<route id="EdelweissLifeProposalRoute">
+			<from uri="cxfrs:bean:EdelweissLifeProposalEndpoint" />
+			<choice id="EdelweissLifePolicyProposalDecision">
+				<when id="EdelweissLifeProposalReq">
+					<simple>${header.operationName} == "submitProposal"</simple>
+					<bean ref="LifeProposalServiceImpl" method="submitLifeProposal"
+						id="LifeProposalServiceImpl" />
+					<process ref="LifeProposalReqProcessor" id="LifeProposalReqProcessor" />
+					<when id="policyStatusSuccessPOSTSuccBASETrue">
+						<simple>${header.baseEnvStatus} == "true"</simple>
+						<log message="Base env status true" />
+						<to uri="direct:proposalCreateRequest" />
+					</when>
+					<when id="policyStatusSuccessPOSTSuccBASEFalse">
+						<simple>${header.baseEnvStatus} == "false"</simple>
+						<log message="Base env status false" />
+						<multicast id="EdelweissLifePropRequestMSG">
+							<pipeline>
+								<to uri="direct:proposalCreateRequest" />
+							</pipeline>
+							<pipeline>
+								<to pattern="InOut" uri="xpathmapper://xpathmapdata" id="EdelweissProposalReqqMapper" />
+								<multicast id="EdelweissLifeMapperDataPassing">
+									<pipeline>
+										<process ref="CarrierProposalRequestDBStore" id="EdelweissCarrierProposalReqDBstore" />
+									</pipeline>
+
+									<pipeline>
+										<to pattern="InOut" uri="webservconsumer://invoke" id="EdelweissProposal" />
+										<multicast id="EdelweissLifeWebserverResponseStoringDB">
+											<pipeline>
+												<process ref="CarrierProposalResponseDBStore" id="EdelweissCarrierProposalResDBstore" />
+											</pipeline>
+											<pipeline>
+												<process ref="LifeProposalResHandler" id="EDELWEISSLifeProposalResHandler" />
+												<to pattern="InOut" uri="xpathmapper://xpathmapdata" id="EdelweissProposalRespMapper" />
+												<process ref="LifeProposalReqHandler" id="EdelweissLifeProposalResReqHandler" />
+												<process ref="ProposalReqDBStore" id="EDELWEISSLifeProposalResDBStore" />
+												<process ref="LifeProposalResProcessor" id="EdelweissLifeProposalResProcessor" />
+												<bean ref="LifeProposalServiceImpl" method="sendMessage"
+													id="EdelweissLifeProposalSubmit" />
+												<process ref="CarrierProposalServiceResLogger" id="CarrierProposalServiceResLogger" />
+												<marshal>
+													<json prettyPrint="true" library="Jackson" />
+												</marshal>
+											</pipeline>
+										</multicast>
+									</pipeline>
+								</multicast>
+							</pipeline>
+						</multicast>
+					</when>
+				</when>
+				<when id="EdelweissLifePolicyCreator">
+					<simple>${header.operationName} == "createPolicy"</simple>
+					<bean ref="LifePolicyCreatorImpl" method="createLifePolicy"
+						id="LifePolicyCreatorImpl" />
+				</when>
+			</choice>
+		</route>
+
+		<route id="createProposalRoute">
+			<from uri="direct:proposalCreateRequest" />
+			<process ref="LifeProposalDBReqProcessor" id="EdelweissLifeProposalDBReqProcessorBASE" />
+			<to pattern="InOut" uri="xpathmapper://xpathmapdata" id="EdelweissLifeXPathMapperBASE" />
+			<process ref="ProposalReqDBStore" id="EdelweissLifeProposalReqDBStoreBASE" />
+			<process ref="LifeProposalResProcessor" id="EdelweissLifeProposalResProcessorBASE" />
+			<bean ref="LifeProposalServiceImpl" method="sendMessage"
+				id="EdelweissLifeProposalSubmitBASE" />
+			<process ref="CarrierProposalServiceResLogger" id="CarrierProposalServiceResLoggerBASE" />
+			<marshal>
+				<json prettyPrint="true" library="Jackson" />
+			</marshal>
+		</route>
+	</camelContext>
+</blueprint>

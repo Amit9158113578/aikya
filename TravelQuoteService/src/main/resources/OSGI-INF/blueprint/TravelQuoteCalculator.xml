@@ -1,0 +1,146 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<blueprint xmlns="http://www.osgi.org/xmlns/blueprint/v1.0.0"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	   xmlns:cm="http://aries.apache.org/blueprint/xmlns/blueprint-cm/v1.1.0"
+       xmlns:cxf="http://camel.apache.org/schema/blueprint/cxf"
+       xsi:schemaLocation="
+       http://www.osgi.org/xmlns/blueprint/v1.0.0 http://www.osgi.org/xmlns/blueprint/v1.0.0/blueprint.xsd
+        http://camel.apache.org/schema/blueprint/cxf http://camel.apache.org/schema/blueprint/cxf/camel-cxf.xsd
+       http://camel.apache.org/schema/blueprint http://camel.apache.org/schema/blueprint/camel-blueprint.xsd">
+
+	<cxf:rsServer id="TravelQuoteEndpoint" address="/travelquoterestservice"
+		serviceClass="com.idep.travelquote.service.TravelQuoteCalcService"
+		loggingFeatureEnabled="true">
+		<cxf:providers>
+			<bean
+				class="org.apache.cxf.rs.security.cors.CrossOriginResourceSharingFilter" />
+		</cxf:providers>
+	</cxf:rsServer>
+
+	<bean id="TravelQuoteshutdownStrategy" class="org.apache.camel.impl.DefaultShutdownStrategy">
+		<property name="timeout" value="30" />
+	</bean>
+	
+	<bean id="TravelQuoteCalcServiceImpl" class="com.idep.travelquote.service.impl.TravelQuoteCalcServiceImpl"/>
+	<bean id="TravelMQMsgProcessor" class="com.idep.travelquote.service.impl.TravelMQMsgProcessor"/>
+	<bean id="ExceptionMQMSGProcessor" class="com.idep.travelquote.exception.processor.ExceptionMQMSGProcessor"/>
+	<bean id="TravelQuoteResponse" class="com.idep.travelquote.response.bean.TravelQuoteResponse"/>
+	<bean id="TravelRequestProcessor" class="com.idep.travelquote.req.processor.TravelRequestProcessor"/>
+	<bean id="TravelProductRequestProcessor" class="com.idep.travelquote.req.processor.TravelProductRequestProcessor"/>
+	<bean id="TravelDroolReqFromProcessor" class="com.idep.travelquote.req.form.TravelDroolReqFromProcessor"/>
+	<bean id="P365TravelReqQListener" class="com.idep.travelquote.queue.listener.P365TravelReqQListener"/>
+	<bean id="TravelRequestQProcessor" class="com.idep.travelquote.req.processor.TravelRequestQProcessor"/>
+	<bean id="TravelReqRiderProcessor" class="com.idep.travelquote.req.processor.TravelReqRiderProcessor"/>
+	<bean id="TravelDroolResponseProcessor" class="com.idep.travelquote.res.form.TravelDroolResponseProcessor"/>
+	<bean id="TravelQuoteResponseProcessor" class="com.idep.travelquote.res.processor.TravelQuoteResponseProcessor"/>
+	<bean id="CarrierQuoteServiceReqLogger" class="com.idep.travelquote.logger.CarrierQuoteServiceReqLogger"/>
+	<bean id="CarrierQuoteServiceResLogger" class="com.idep.travelquote.logger.CarrierQuoteServiceResLogger"/>
+	<bean id="TravelQuoteLoggerProcessor" class="com.idep.travelquote.logger.TravelQuoteLoggerProcessor"/>
+	<bean id="TravelQuoteExResHandler" class="com.idep.travelquote.res.processor.TravelQuoteExResHandler"/>
+	<bean id="TravelExtServiceResProcessor" class="com.idep.travelquote.res.processor.TravelExtServiceResProcessor"/>
+    <bean id="TravelQuoteDBSender" class="com.idep.travelquote.dbstore.TravelQuoteDBSender"/>
+    <bean id="RequestTransformSaver" class="com.idep.travelquote.multijson.support.RequestTransformSaver" />
+    <bean id="XMLCharEmitter" class="com.idep.travelquote.req.transformer.XMLCharEmitter" /> 
+   	<bean id="FutureGeneraliSOAPReqProcessor" class="com.idep.travelquote.req.transformer.FutureGeneraliSOAPReqProcessor" />
+    <bean id="FutureGenSoapReqFormatter" class="com.idep.travelquote.req.transformer.FutureGenSoapReqFormatter" />
+    <bean id="FutureSoapResFormatter" class="com.idep.travelquote.res.transformer.FutureSoapResFormatter" />
+   	<bean id="FutureGenResTransformer" class="com.idep.travelquote.res.transformer.FutureGenResTransformer"/>
+   	<bean id="ExternalTravelServiceRespHandler" class="com.idep.travelquote.ext.form.req.ExternalTravelServiceRespHandler"/>
+   	<bean id="TravelTravellersDobCalProcessor" class="com.idep.travelquote.carrier.req.processor.TravelTravellersDobCalProcessor"/>
+   	<bean id="DateFormatter" class="com.idep.travelquote.util.DateFormatter"/>
+   	<bean id="FutureGeneraliInputRequestProcessor" class="com.idep.travelquote.carrier.req.processor.FutureGeneraliInputRequestProcessor"/>
+   	<bean id="TravelDroolURLFromProcessor" class="com.idep.travelquote.service.TravelDroolURLFromProcessor"/>
+  	<bean id="TataAIGSoapReqProcessor" class="com.idep.travelquote.req.transformer.TataAIGSoapReqProcessor"/>
+   	<bean id="TataAIGSoapReqGenerator" class="com.idep.travelquote.req.transformer.TataAIGSoapReqGenerator"/>
+   	<bean id="TataAIGResTransformer" class="com.idep.travelquote.res.transformer.TataAIGResTransformer"/>
+   	<bean id="TataAIGSoapResFormatter" class="com.idep.travelquote.res.transformer.TataAIGSoapResFormatter"/>
+   	<bean id="TataAIGInputRequestFormatter" class="com.idep.travelquote.carrier.req.processor.TataAIGInputRequestFormatter"/>
+	<bean id="CalculateMemberCountProcessor" class="com.idep.travelquote.req.form.CalculateMemberCountProcessor"/>
+	<bean id="SoapReqFormatter" class="com.idep.travelquote.req.processor.SoapReqFormatter"/>
+	<bean id="BhartiAxaResTransformer" class="com.idep.travelquote.res.transformer.BhartiAxaResTransformer"/>
+	<bean id="BhartiAxaSoapResFormatter" class="com.idep.travelquote.res.transformer.BhartiAxaSoapResFormatter"/>
+	<bean id="FindPremiumRateProcessor" class="com.idep.travelquote.req.transformer.FindPremiumRateProcessor"/>
+	<bean id="BhartiAxaFamilyMemberCountCodeProcesser" class="com.idep.travelquote.req.form.BhartiAxaFamilyMemberCountCodeProcesser"/>
+	<cm:property-placeholder persistent-id="AMQCustomProperties">
+	</cm:property-placeholder>
+
+	<bean id="jmsConnectionFactory" class="org.apache.activemq.ActiveMQConnectionFactory">
+		<property name="brokerURL" value="${amqbroker.host}:${amqbroker.port}" />
+		<property name="userName" value="${amqbroker.username}" />
+		<property name="password" value="${amqbroker.password}" />
+	</bean>
+
+	<bean id="pooledConnectionFactory" class="org.apache.activemq.pool.PooledConnectionFactory"
+		init-method="start" destroy-method="stop">
+		<property name="maxConnections" value="${amq.maxConnections}" />
+		<property name="connectionFactory" ref="jmsConnectionFactory" />
+	</bean>
+
+	<bean id="jmsConfig" class="org.apache.camel.component.jms.JmsConfiguration">
+		<property name="connectionFactory" ref="pooledConnectionFactory" />
+		<property name="concurrentConsumers" value="${amq.concurrentConsumers}" />
+		<property name="mapJmsMessage" value="${amq.mapJmsMessage}" />
+		<property name="maxConcurrentConsumers" value="${amq.maxConcurrentConsumers}" />
+		<property name="asyncConsumer" value="${amq.asyncConsumer}" />
+		<property name="asyncStartListener" value="${amq.asyncStartListener}" />
+	</bean>
+
+	<bean id="activemq" class="org.apache.activemq.camel.component.ActiveMQComponent">
+		<property name="configuration" ref="jmsConfig" />
+		<!-- if we are using transacted then enable CACHE_CONSUMER (if not using 
+			XA) to run faster see more details at: http://camel.apache.org/jms -->
+		<property name="transacted" value="${amq.transacted}" />
+		<property name="cacheLevelName" value="${amq.cacheLevelName}" />
+	</bean>
+<bean id="jmsConnectionFactorySecondary"
+   class="org.apache.activemq.ActiveMQConnectionFactory">
+   <property name="brokerURL" value="${amqbroker.secondaryhost}:${amqbroker.secondaryport}" />
+   <property name="userName" value="${amqbroker.username}"/>
+   <property name="password" value="${amqbroker.password}"/>
+</bean>
+ 
+<bean id="pooledConnectionFactorySecondary"
+   class="org.apache.activemq.pool.PooledConnectionFactory" init-method="start" destroy-method="stop">
+  <property name="maxConnections" value="${amq.maxConnections}" /> 
+   <property name="connectionFactory" ref="jmsConnectionFactorySecondary" />
+</bean>
+<bean id="jmsConfigSecondary"
+   class="org.apache.camel.component.jms.JmsConfiguration">
+   <property name="connectionFactory" ref="pooledConnectionFactorySecondary"/>
+   <property name="concurrentConsumers" value="${amq.concurrentConsumers}"/>
+   <property name="mapJmsMessage" value="${amq.mapJmsMessage}" />
+   <property name="maxConcurrentConsumers" value="${amq.maxConcurrentConsumers}" />
+   <property name="asyncConsumer" value="${amq.asyncConsumer}" />
+   <property name="asyncStartListener" value="${amq.asyncStartListener}" />  
+</bean>
+ 
+ <bean id="activemqSecondary"
+    class="org.apache.activemq.camel.component.ActiveMQComponent">
+    <property name="configuration" ref="jmsConfigSecondary"/>
+    <property name="transacted" value="${amq.transacted}"/>
+    <property name="cacheLevelName" value="${amq.cacheLevelName}" />
+</bean>
+	<camelContext threadNamePattern="TravelThread:#counter#"
+		id="TravelQuoteCalculatorService" xmlns="http://camel.apache.org/schema/blueprint">
+		<threadPoolProfile poolSize="50" maxPoolSize="100"
+			maxQueueSize="1000" customId="true" id="travelreqPool" />
+		<route id="TravelQuoteCalculatorRoute">
+			<from uri="cxfrs:bean:TravelQuoteEndpoint" />
+			<choice id="TravelQuoteDecision">
+				<when id="TravelQuoteCalcReq">
+					<simple>${header.operationName} == "calculateTravelQuote"</simple>
+					<bean ref="TravelQuoteCalcServiceImpl" method="calculateQuote" id="TravelQuoteReqBean" />
+					<process ref="TravelRequestProcessor" id="TravelQuoteReqProcessor" />
+					<bean ref="TravelQuoteResponse" method="sendGenericResponse" />
+				</when>
+				<when id="TravelProductQuoteCalcReq">
+					<simple>${header.operationName} == "calculateTravelProductQuote"</simple>
+					<bean ref="TravelQuoteCalcServiceImpl" method="calculateQuote"
+						id="TravelProductQuoteReqBean" />
+					<process ref="TravelProductRequestProcessor" id="TravelProductRequestProcessor" />
+					<bean ref="TravelQuoteResponse" method="sendGenericResponse" />
+				</when>
+			</choice>
+		</route>
+	</camelContext>
+</blueprint>

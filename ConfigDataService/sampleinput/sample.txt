@@ -1,0 +1,56 @@
+1. search Rider List :
+
+ {
+	"header":
+		 	 {
+		 	 	
+		 	  "transactionName":"findAppConfig"
+			
+			 },
+		
+	 "body":
+			 {
+				"documentType":"Rider",
+				"searchValue":"Car"
+			 }
+			 
+  	}
+
+
+
+
+2. 
+ {
+	"header":
+		 	 {
+		 	 "deviceID":"ABCD111",
+		 	 "transactionName":"findAppConfig"
+			
+			 },
+		
+	 "body":
+			 {
+				"documentType":"City",
+				"searchData":"D"
+			 }
+			 
+			 
+  }
+  
+  2.
+  
+   {
+	"header":
+		 	 {
+		 	 	
+		 	  "transactionName":"findAppConfig"
+			
+			 },
+		
+	 "body":
+			 {
+				"documentType":"RTODetails",
+				"searchValue":"MH-12"
+			 }
+			 
+  	}

@@ -1,0 +1,187 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<blueprint xmlns="http://www.osgi.org/xmlns/blueprint/v1.0.0"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:cxf="http://camel.apache.org/schema/blueprint/cxf"
+	xsi:schemaLocation="
+       http://www.osgi.org/xmlns/blueprint/v1.0.0 http://www.osgi.org/xmlns/blueprint/v1.0.0/blueprint.xsd
+        http://camel.apache.org/schema/blueprint/cxf http://camel.apache.org/schema/blueprint/cxf/camel-cxf.xsd
+       http://camel.apache.org/schema/blueprint http://camel.apache.org/schema/blueprint/camel-blueprint.xsd">
+
+	<cxf:rsServer id="FutureGeneraliTravelProposalEndpoint" address="/futuregeneralitravelPolicyProposal" 
+	serviceClass="com.idep.proposal.service.TravelProposalService" loggingFeatureEnabled="true">
+		<cxf:providers>
+			<bean class="org.apache.cxf.rs.security.cors.CrossOriginResourceSharingFilter"/>
+		</cxf:providers>
+	</cxf:rsServer>
+	
+  <camelContext streamCache="true" id="FutureGeneraliTravelProposalContext" xmlns="http://camel.apache.org/schema/blueprint">
+  <dataFormats>
+			<xmljson forceTopLevelObject="true" rootName="Session"
+				skipWhitespace="true" trimSpaces="true" skipNamespaces="true"
+				removeNamespacePrefixes="true" expandableProperties="PHJ5 PHJ6 PHL2" id="FutureGNjsonxml" />
+			<xmljson forceTopLevelObject="true" skipWhitespace="true"
+				trimSpaces="true" skipNamespaces="true" removeNamespacePrefixes="true"
+				id="FutureGNxmljson" />
+  </dataFormats>
+    <onException>
+			<exception>java.net.SocketTimeoutException</exception>
+			<exception>java.net.SocketException</exception>
+			<handled>
+				<constant>true</constant>
+			</handled>
+			<log message="Future Generali travel proposal service seems to be down" />
+			<process ref="ProposalExceptionProcessor" customId="true" id="FutureGeneraliTraProposalExceptionProcessor" />
+	</onException>
+	<onException>
+			<exception>org.apache.camel.component.http4.HttpOperationFailedException</exception>
+			<handled>
+				<constant>true</constant>
+			</handled>
+			<log message="Future Generali travel proposal Http Operation Failed : check input provided" />
+			<process ref="ProposalExceptionProcessor" customId="true" id="FutureGeneraliHTTPProposalExceptionProcessor" />
+	</onException>
+	<onException>
+			<exception>com.idep.proposal.exception.processor.ExecutionTerminator</exception>
+			<exception>java.lang.Exception</exception>
+			<handled>
+				<constant>true</constant>
+			</handled>
+			<log message="Future Generali travel proposal process terminated" />
+			<process ref="ProposalExceptionProcessor" customId="true" id="FutureGeneraliTraGenericException" />
+			<marshal>
+				<json prettyPrint="true" library="Jackson" />
+			</marshal>
+	</onException>
+   	
+   	<route id="FutureTravelProposalRoute">
+		<from uri="cxfrs:bean:FutureGeneraliTravelProposalEndpoint" />
+		<choice id="FUTURETravelDecisionMaker">
+			<when id="FUTUREProposalReq">
+				<simple>${header.operationName} == "submitTravelProposal"</simple>
+					<log message="Future Generali Travel Proposal Creation initiated"/>
+					<bean ref="TravelProposalServiceImpl" method="submitTravelProposal" id="FutureGenTraProposalSubmitReq"/>
+					<process ref="TravelProposalReqProcessor" id="FutureGenTravelProposalReqProcessor" />
+					<process ref="TravelProposalReqPostProcessor" id="TataAIGTravelProposalReqPostProcessor" />
+					<process ref="TravelPolicyLogProcessor" id="FutureGNTravelLogProcessor1" />
+					<process ref="TravelProposalReqLogProcessor" id="FutureGeneraliTravelProReqLogProcessor" />
+					<!-- <when id="policyStatusSuccessPOSTSuccBASETrue">
+						<simple>${header.baseEnvStatus} == "true"</simple>
+						<log message="Base env status true" />
+						<to uri="direct:proposalCreateRequest" />
+					</when> -->
+				<!-- 	<when id="policyStatusSuccessPOSTSuccBASEFalse">
+						<simple>${header.baseEnvStatus} == "false"</simple> -->
+						<log message="Base env status false" />
+						<multicast id="FutureGenTravelPropRequestMSG">
+							<pipeline>
+								<to uri="direct:proposalCreateRequest" />
+							</pipeline>
+							<pipeline>
+								<process ref="TravelProposalResHandler" id="FutureGenErgoTravelProposalResHandler" />
+								<process ref="TravelPolicyLogProcessor" id="FutureGenTravelLogProcessor" />
+								<log message="Mapper input resuest: ${body}"/>								
+								<to pattern="InOut" uri="xpathmapper://xpathmapdata" id="FutureGenTravelXPathMapper" />
+								<log message="FutureGen Mapper response: ${body}"/>
+								<process ref="TravelProposalResProcessor" id="FutureHealthProposalMapperResponse" />
+								<process ref="ProposalReqDBStore" id="FutureTravelProposalResDBStore" />
+								<process ref="TravelPolicyLogProcessor" id="FutureTravelLogProcessor3" />
+								<process ref="ProposalResProcessor" id="FutureTravelProposalResProcessor"/>
+								<log message="Future Generali travel response processor"/>
+								<!-- <process ref="TravelProposalAttributeReqProcessor" id="FutureGeneraliTravelAttributeReqProcessor" />
+								<log message="FutureGen TravelProposalAttributeReqProcessor response: ${body}"/>
+								 -->
+								 <bean ref="TravelProposalServiceImpl" method="submitTravelProposal" id="FutureGenraliTravelProposalResponse" />
+								<marshal>
+									<json prettyPrint="true" library="Jackson" />
+								</marshal>		   			        
+			   			    </pipeline>  
+			   			</multicast>  
+			   		</when>
+			   		
+			   		<when id="FutureGNTravelPolicyCreator">
+					<simple>${header.operationName} == "createPolicy"</simple>
+					<log message="Future Generali Travel : createPolicy request received" />
+					<bean ref="TravelPolicySubmitServiceImpl" method="submitPolicy"	id="FutureGenTravelPolicyServiceRequest" />
+					<process ref="TravelPolicyLogProcessor" id="FutureGenTravelPolicyLogProcessor" />
+					<multicast>
+						<pipeline>
+							<process ref="PaymentResponseUpdateProcessor" id="FutureGenTravelPaymentResProcessor" />
+							<process ref="ProposalReqDBStore" id="FutureGenTravelPolicyReqDBStore" />
+							<log message="Payment response added in database for FutureGen Ergo Travel " />
+							<process ref="TravelPolicyLogProcessor" id="FutureGenTravelPolicyLogProcessor" />
+						</pipeline>
+						<pipeline>
+							<process ref="PaymentResponseValidator" id="FutureGenTravelPaymentResValidator" />
+							<process ref="TravelPolicyReqProcessor" id="FutureGenTravelPolicyReqProcessor" />
+							<process ref="TravelPolicyProcessor" id="FutureTravelPolicyProcessor" />	
+							<to pattern="InOut" uri="xpathmapper://xpathmapdata" id="FutureGenTravelXPathMapper" />
+							<unmarshal ref="FutureGNjsonxml" id="FutuReneJSONTOXML" />
+							<process ref="XMLCharEmitter" id="FutureXMLCharEmitter" /><process ref="FutureGenraliSoapReqFormatter" id="FutuGeneSOAPRequestFormatter" />
+							<multicast id="FutureTravelRequestDBStore" parallelProcessing="true">
+								<pipeline>
+									<process ref="CarrierProposalRequestDBStore" id="CarrierProposalReqDBstore" />
+								</pipeline>
+								<pipeline>
+							<to pattern="InOut" uri="webservconsumer://invoke" id="FutuGeneHealthProposalURL" />
+							<multicast id="FutureTravelResponseDBStore" parallelProcessing="true">
+								<pipeline>
+								<process ref="CarrierProposalResponseDBStore" id="CarrierProposalReqDBstore" />
+								</pipeline>
+								<pipeline>
+							<process ref="FutureTravelSoapResFormatter" id="FutuGeneSOAPResponseFormatter" />
+							<log message="FutureGEN proposal response after FutureTravelSoapResFormatter :${body}" /> 
+							<marshal ref="FutureGNxmljson" id="FutureGeneXMLTOJSON" />
+							<process ref="FutureCarrierResponseProcessor" id="FutureCarrierResponseProcessor"/>
+							<process ref="TravelCarrierPolicyResponseProcessor" id="TravelCarrierPolicyResponseProcessor" />
+							<log message="FutureGEN input to policyReqconf :${body}" />
+							<to pattern="InOut" uri="xpathmapper://xpathmapdata" id="FutureGenTravelXPathMapper" />
+							<log message="FutureGEN output to policyReqconf :${body}" />
+							<process ref="TravelPolicyReqHandler" id="FutureGenTravelPolicyReqHandler" />
+							<process ref="ProposalReqDBStore" id="FutureGenErgoTravelProposalReqDBStore" />
+							<process ref="TravelPolicyResHandler" id="FutureGenTravelPolicyResHandler" />
+							<log message="FutureGEN input to policyResconf :${body}" />
+							<to pattern="InOut" uri="xpathmapper://xpathmapdata" id="FutureGenPolicyResMapperUI" />
+							<log message="FutureGEN output to policyResconf :${body}" />
+							<process ref="TravelPolicyReqHandler" id="FUTUREGENHealthPolicyRes" />
+							<process ref="TravelPolicyLogProcessor" id="FutureHealthPolicyLogProcessor5" />
+							
+							<multicast>
+								<pipeline>
+									<process ref="UserProfileReqProcessor" id="FutureGenTravelUserProfileReqProcessor" />
+								</pipeline>
+								<pipeline>
+									<process ref="TravelPolicyResLogProcessor" id="FutureGenTravelPolicyResLogProcessor" />
+									<process ref="TravelPolicyResProcessor" id="FutureGenErgoTravelPolicyResProcessor" />
+									<bean ref="TravelPolicySubmitServiceImpl" method="sendMessage"
+										id="FutureGenTravelPolicyServiceResponse" />
+									<process ref="TravelPolicyLogProcessor" id="FutureGenTravelLogProcessor5" />
+									<!-- <marshal> <json prettyPrint="true" library="Jackson"/> </marshal> -->
+									</pipeline>
+								</multicast>
+								</pipeline>
+							</multicast>
+							</pipeline>
+			   			  </multicast>
+						</pipeline>
+					</multicast>
+				</when>   		
+			  </choice>			
+    </route>
+   <route id="createProposalRoute">
+			<from uri="direct:proposalCreateRequest" />
+			<process ref="TravelProposalDBReqProcessor" id="FutureGenTravelProposalDBReqProcessor" />
+			<to pattern="InOut" uri="xpathmapper://xpathmapdata" id="FutureGenXPathMapperBASE" />
+			<process ref="TravelPolicyLogProcessor" id="FutureGenTravelLogProcessor6" />
+			<process ref="ProposalReqDBStore" id="FutureGenProposalReqDBStore" />
+			<process ref="ProposalResProcessor" id="FutureGenTravelProposalResProcessor" />
+			<bean ref="TravelProposalServiceImpl" method="sendMessage" id="FutureGenTravelProposalServiceImpl"/>
+			<log message="Future Generali Travel FutureGeneraliResponseProcessor ${body}" />
+			<marshal>
+				<json prettyPrint="true" library="Jackson" />
+			</marshal>
+	</route>
+	
+
+  </camelContext>
+  
+  
+</blueprint>

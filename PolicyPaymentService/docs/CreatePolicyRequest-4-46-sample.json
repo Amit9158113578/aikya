@@ -1,0 +1,11 @@
+{
+  "transactionStausInfo" : {
+    "policyNo" : "",
+    "transactionStatusCode" : "",
+    "apPreferId" : "",
+    "proposalId" : ""
+  },
+  "productId" : "",
+  "carrierId" : "",
+  "businessLineId" : ""
+}

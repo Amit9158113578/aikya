@@ -1,0 +1,250 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<blueprint xmlns="http://www.osgi.org/xmlns/blueprint/v1.0.0"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:camel="http://camel.apache.org/schema/blueprint"
+	xmlns:cxf="http://camel.apache.org/schema/blueprint/cxf" xmlns:jaxrs="http://cxf.apache.org/blueprint/jaxrs"
+	xmlns:cm="http://aries.apache.org/blueprint/xmlns/blueprint-cm/v1.0.0"
+	xsi:schemaLocation=" 
+       http://www.osgi.org/xmlns/blueprint/v1.0.0 http://www.osgi.org/xmlns/blueprint/v1.0.0/blueprint.xsd
+       http://camel.apache.org/schema/blueprint/cxf http://camel.apache.org/schema/blueprint/cxf/camel-cxf.xsd
+       http://cxf.apache.org/blueprint/jaxrs http://cxf.apache.org/schemas/blueprint/jaxrs.xsd
+       http://camel.apache.org/schema/blueprint http://camel.apache.org/schema/blueprint/camel-blueprint.xsd">
+
+	<cxf:rsServer id="paymentResponseEndpoint" address="/paymentresponse"
+		serviceClass="com.idep.service.payment.PaymentResponse"
+		loggingFeatureEnabled="true">
+		<cxf:providers>
+			<bean
+				class="org.apache.cxf.rs.security.cors.CrossOriginResourceSharingFilter" />
+		</cxf:providers>
+	</cxf:rsServer>
+	
+	
+<cm:property-placeholder persistent-id="AMQCustomProperties">
+	</cm:property-placeholder>
+
+	<bean id="jmsConnectionFactory" class="org.apache.activemq.ActiveMQConnectionFactory">
+		<property name="brokerURL" value="${amqbroker.host}:${amqbroker.port}" />
+		<property name="userName" value="${amqbroker.username}" />
+		<property name="password" value="${amqbroker.password}" />
+	</bean>
+
+	<bean id="pooledConnectionFactory" class="org.apache.activemq.pool.PooledConnectionFactory"
+		init-method="start" destroy-method="stop">
+		<property name="maxConnections" value="${amq.maxConnections}" />
+		<property name="connectionFactory" ref="jmsConnectionFactory" />
+	</bean>
+
+	<bean id="jmsConfig" class="org.apache.camel.component.jms.JmsConfiguration">
+		<property name="connectionFactory" ref="pooledConnectionFactory" />
+		<property name="concurrentConsumers" value="${amq.concurrentConsumers}" />
+		<property name="mapJmsMessage" value="${amq.mapJmsMessage}" />
+		<property name="maxConcurrentConsumers" value="${amq.maxConcurrentConsumers}" />
+		<property name="asyncConsumer" value="${amq.asyncConsumer}" />
+		<property name="asyncStartListener" value="${amq.asyncStartListener}" />
+	</bean>
+
+	<bean id="activemq" class="org.apache.activemq.camel.component.ActiveMQComponent">
+		<property name="configuration" ref="jmsConfig" />
+	</bean>
+	
+	
+	<bean id="CustomerProcessor" class="com.idep.processor.customerprocessor.CustomerProcessor"/>
+	<bean id="PaymentResponseRenderer"
+		class="com.idep.service.payment.impl.PaymentResponseRenderer"/>
+	<bean id="CreateUserPolicy"
+		class="com.idep.service.payment.impl.CreateUserPolicy"/>
+	<bean id="CreateUserPolicyRequestConfig"
+		class="com.idep.service.payment.impl.CreateUserPolicyRequestConfig"/>
+	<bean id="UserPolicyResponseHandler"
+		class="com.idep.service.payment.impl.UserPolicyResponseHandler"/>
+	<bean id="ValidatePaymentStatus"
+		class="com.idep.service.payment.impl.ValidatePaymentStatus"/>
+	<bean id="ValidatePaymentStatusResponseHandler"
+		class="com.idep.service.payment.impl.ValidatePaymentStatusResponseHandler"/>
+	<bean id="PaymentResponseRendererProcessor"
+		class="com.idep.service.payment.impl.PaymentResponseRendererProcessor"/>
+	<bean id="PaymentResponseExceptionProcessor"
+		class="com.idep.service.payment.exception.PaymentResponseExceptionProcessor"></bean>
+		<bean id="AffiliateEmailSenderAndDataUpdater"
+		class="com.idep.processor.customerprocessor.AffiliateEmailSenderAndDataUpdater"></bean>
+	
+	<!-- Reduces the graceful shutdown time from 300 to 30 seconds. -->
+	<bean id="paymentResponseShutdownStrategy" class="org.apache.camel.impl.DefaultShutdownStrategy">
+		<property name="timeout" value="30" />
+	</bean>
+<camelContext id="PaymentResponseService" xmlns="http://camel.apache.org/schema/blueprint">
+  <onException>
+    <exception>com.idep.service.payment.exception.ExecutionTerminator</exception>
+    <handled>
+      <constant>true</constant>
+    </handled>
+    <log message="Payment Gateway Service Terminated "/>
+    <process ref="PaymentResponseExceptionProcessor" id="PaymentResponseExceptionProcessor" />
+    <log message="Failure UI redirection link : ${body}" id="FailureUIRedirectionLinkLogger"/>
+    <bean ref="PaymentResponseRenderer" method="paymentResponseRedirection" id="FailurePaymentResponseRendererMethod"/>
+  </onException>
+  <route id="PaymentResponseRoute">
+    <from uri="cxfrs:bean:paymentResponseEndpoint?continuationTimeout=120000" id="PaymentResponseEndPoint">
+      <description/>
+    </from>
+    <log message="Payment Reponse Service Invoked : ${body}" id="PaymentResponseLogger"/>
+    <choice id="PaymentResponse">
+      	<when id="successPost">
+	        <simple>${header.operationName} == "paymentResponseSuccessPOST" or ${header.operationName} == "paymentMasterResponseSuccessPOST"</simple>
+	        <bean ref="PaymentResponseRenderer" method="paymentResponseSuccessPOST" multiParameterArray="true" id="paymentResponseSuccessPOST"/>
+	        <log message="Payment response renderer processor : ${body}" id="PaymentResponseRendererProcessorSuccessPOSTLogger"/>
+	        <process ref="PaymentResponseRendererProcessor" id="PaymentResponseRendererProcessorSuccessPOST"/>
+        
+	        <when id="policyStatusSuccessPOSTSucc">
+	         	<simple>${header.policyStatus} == "success"</simple>
+		         	<when id="successGetSuccessPOST">
+			         	<simple>${header.carrierName} == "starhealth"</simple>
+			         	<log message="Validate payment status of the policy : ${body}" id="ValidatePaymentStatusSuccessPOSTLogger"/>
+			        	<process ref="ValidatePaymentStatus" id="ValidatePaymentStatusSuccessPOST"/>
+			        	<recipientList>
+			         		<simple>${header.MServiceURL}</simple>
+				        </recipientList>
+				        <log message="Validate payment status Response : ${body}" id="ValidatePaymentStatusRespSuccessPOSTLogger"/>
+				        <process ref="ValidatePaymentStatusResponseHandler" id="ValidatePaymentStatusResponseHandlerSuccessPOST"/>
+			         </when>
+		         
+		         	<log message="Request for Create Policy generation config : ${body}" id="CreatePolicyRequestGenerationConfigSuccessPOSTLogger"/>
+		       	 	<process ref="CreateUserPolicyRequestConfig" id="CreateUserPolicyRequestConfigSuccessPOST"/>
+		         	<log message="Create User Policy Request for mapper : ${body}" id="CreateUserPolicyRequestConfigMapperSuccessPOSTLogger"/>
+			        <to pattern="InOut" uri="xpathmapper://xpathmapdata" id="PaymentReqestXPathMapperSuccessPOST"/>
+			        <log message="Create Policy Service : ${body}" id="CreatePolicyRequestSuccessPOSTLogger"/>
+			        <process ref="CreateUserPolicy" id="CreateUserPolicySuccessPOST"/>
+			        
+			        <when id="createPolicyCallStatusSuccessPOSTSUCC">
+		         		<simple>${header.policyStatus} == "success"</simple>
+		         		<multicast id="AffiliatePipelinePOST">
+		         		<log message="Create Policy Service Invoked : ${body}" id="CreatePolicyResponseInvokedSuccessPOSTLogger"/>
+			         		<pipeline>
+			         			<process ref="AffiliateEmailSenderAndDataUpdater" id="AffiliateEmailTempLoader" />
+								<to pattern="InOnly" uri="activemq:queue:Emails" id="AffiliatePolicyEmail" />
+							</pipeline>
+			         		<pipeline>
+			         			<recipientList>
+						        <simple>${header.MServiceURL}</simple>
+						        </recipientList>
+						        <log message="Create Policy Service Response : ${body}" id="CreatePolicyResponseRespSuccessPOSTLogger"/>
+						        <process ref="UserPolicyResponseHandler" id="UserPolicyResponseHandlerSuccessPOST"/>
+				         	</pipeline>
+			         	</multicast>
+		         		
+				        <log message="UI redirection link : ${body}" id="UIRedirectionLinkSuccessPOSTLogger"/>
+				        <multicast id="PaymentResponsePOST">
+					        <pipeline>
+				               	<process ref="CustomerProcessor" id="CustomerMessageProcessor"/>
+				              	<log message="Inserting Record in Customer Creation Queue POST :${body}" id="CustomerCreationQLogger"/>
+						    	<to pattern="InOnly" uri="activemq:queue:CustomerCreationQueue" id="CustomerCreationQ"/>
+	              			</pipeline>
+	              			<pipeline>
+								<bean ref="PaymentResponseRenderer" method="paymentResponseRedirection" id="PaymentResponseRendererMethodSuccessPOST"/>		              			
+	              			</pipeline>
+	              			
+	              		</multicast>
+		         	</when>
+		         	<when id="createPolicyCallStatusSuccessPOSTFAIL">
+		         		<simple>${header.policyStatus} == "failure"</simple>
+		         		<log message="Request for Create Policy generation cancelled due to policy purchase failure : ${body}" id="CreatePolicyCallResponseSuccessPOSTFAILLogger"/>
+		        		<bean ref="PaymentResponseRenderer" method="paymentFailureResponseRedirection" id="CreatePolicyCallPaymentResponseRendererMethodSuccessPOSTFAIL"/>
+		         	</when>
+	       	</when>
+	        <when id="policyStatusSuccessPOSTFail">
+	         	<simple>${header.policyStatus} == "failure"</simple>
+	         	<log message="Request for Create Policy generation cancelled due to policy purchase failure : ${body}" id="CreatePolicyResponseSuccessPOSTFAILLogger"/>
+	        	<bean ref="PaymentResponseRenderer" method="paymentFailureResponseRedirection" id="PaymentResponseRendererMethodSuccessPOSTFAIL"/>
+	       	</when>
+      	</when>
+      	
+      <when id="failurePost">
+        <simple>${header.operationName} == "paymentResponseFailurePOST" or ${header.operationName} == "paymentMasterResponseFailurePOST"</simple>
+        <bean ref="PaymentResponseRenderer" method="paymentResponseFailurePOST" multiParameterArray="true" id="paymentResponseFailurePOST"/>
+        <log message="Payment response renderer processor : ${body}" id="PaymentResponseRendererProcessorFailurePOSTLogger"/>
+        <process ref="PaymentResponseRendererProcessor" id="PaymentResponseRendererProcessorFailurePOST"/>
+        <log message="Request for Create Policy generation config : ${body}" id="CreatePolicyRequestGenerationConfigFailurePOSTLogger"/>
+        <process ref="CreateUserPolicyRequestConfig" id="CreateUserPolicyRequestConfigFailurePOST"/>
+        <log message="Request for Create Policy generation cancelled due to policy purchase failure : ${body}" id="CreatePolicyResponseFailurePOSTLogger"/>
+        <bean ref="PaymentResponseRenderer" method="paymentFailureResponseRedirection" id="PaymentResponseRendererMethodFailurePOST"/>
+      </when>
+      
+      <when id="successGet">
+        <simple>${header.operationName} == "paymentResponseSuccessGET" or ${header.operationName} == "paymentMasterResponseSuccessGET"</simple>
+        <bean ref="PaymentResponseRenderer" method="paymentResponseSuccessGET" multiParameterArray="true" id="paymentResponseSuccessGET"/>
+        <log message="Payment response renderer processor : ${body}" id="PaymentResponseRendererProcessorSuccessGETLogger"/>
+        <process ref="PaymentResponseRendererProcessor" id="PaymentResponseRendererProcessorSuccessGET"/>
+        <when id="policyStatusSuccessGETSUCC">
+         	<simple>${header.policyStatus} == "success"</simple>
+         	<when id="policyStatusStarHealthGET">
+	         	<simple>${header.carrierName} == "starhealth"</simple>
+	         	<log message="Validate payment status of the policy : ${body}" id="ValidatePaymentStatusSuccessGETLogger"/>
+	        	<process ref="ValidatePaymentStatus" id="ValidatePaymentStatusSuccessGET"/>
+	        	<recipientList>
+	         		<simple>${header.MServiceURL}</simple>
+		        </recipientList>
+		        <log message="Validate payment status Response : ${body}" id="ValidatePaymentStatusRespSuccessGETLogger"/>
+		        <process ref="ValidatePaymentStatusResponseHandler" id="ValidatePaymentStatusResponseHandlerSuccessGET"/>
+	         </when>
+	        <log message="Request for Create Policy generation config : ${body}" id="CreatePolicyRequestGenerationConfigSuccessGETLogger"/>
+	        <process ref="CreateUserPolicyRequestConfig" id="CreateUserPolicyRequestConfigSuccessGET"/>
+         	<log message="Create User Policy Request for mapper : ${body}" id="CreateUserPolicyRequestConfigMapperSuccessGETLogger"/>
+	        <to pattern="InOut" uri="xpathmapper://xpathmapdata" id="PaymentReqestXPathMapperSuccessGET"/>
+	        <log message="Create Policy Service : ${body}" id="CreatePolicyRequestSuccessGETLogger"/>
+	        <process ref="CreateUserPolicy" id="CreateUserPolicySuccessGET"/>
+	         <when id="createPolicyCallStatusSuccessGETSUCC">
+         		<simple>${header.policyStatus} == "success"</simple>
+         		<log message="Create Policy Service Invoked : ${body}" id="CreatePolicyResponseInvokedSuccessGETLogger"/>
+		         <multicast id="AffiliatePipelineGET">
+		        	 <pipeline>
+						<process ref="AffiliateEmailSenderAndDataUpdater" id="AffiliateEmailTempLoader" />
+						<to pattern="InOnly" uri="activemq:queue:Emails" id="AffiliatePolicyEmail" />
+					</pipeline>
+					<pipeline>
+						<recipientList>
+		         			<simple>${header.MServiceURL}</simple>
+		       			 </recipientList>
+			        	<log message="Create Policy Service Response : ${body}" id="CreatePolicyResponseRespSuccessGETLogger"/>
+				        <process ref="UserPolicyResponseHandler" id="UserPolicyResponseHandlerSuccessGET"/>
+					</pipeline>
+		        </multicast>
+		        
+		        <log message="UI redirection link : ${body}" id="UIRedirectionLinkSuccessGETLogger"/>
+		        <multicast id="PaymentResponsePOST">
+					<pipeline>
+		               	<process ref="CustomerProcessor" id="CustomerMessageProcessor"/>
+		              	<log message="Inserting Record in Customer Creation Queue POST :${body}" id="CustomerCreationQLogger"/>
+				    	<to pattern="InOnly" uri="activemq:queue:CustomerCreationQueue" id="CustomerCreationQ"/>
+            		</pipeline>
+            		<pipeline>
+						<bean ref="PaymentResponseRenderer" method="paymentResponseRedirection" id="PaymentResponseRendererMethodSuccessGET"/>
+           			</pipeline>      			
+				</multicast>
+         	</when>
+         	<when id="createPolicyCallStatusSuccessGETFAIL">
+         		<simple>${header.policyStatus} == "failure"</simple>
+         		<log message="Request for Create Policy generation cancelled due to policy purchase failure : ${body}" id="CreatePolicyCallResponseSuccessGETFAILLogger"/>
+        		<bean ref="PaymentResponseRenderer" method="paymentFailureResponseRedirection" id="CreatePolicyCallPaymentResponseRendererMethodSuccessGETFAIL"/>
+         	</when>
+         </when>   
+        <when id="policyStatusSuccessGETFAIL">
+         	<simple>${header.policyStatus} == "failure"</simple>
+         	<log message="Request for Create Policy generation cancelled due to policy purchase failure : ${body}" id="CreatePolicyResponseSuccessGETFAILLogger"/>
+        	<bean ref="PaymentResponseRenderer" method="paymentFailureResponseRedirection" id="PaymentResponseRendererMethodSuccessGETFAIL"/>
+         </when>
+      </when>
+      
+      <when id="failureGet">
+        <simple>${header.operationName} == "paymentResponseFailureGET" or ${header.operationName} == "paymentMasterResponseFailureGET"</simple>
+        <bean ref="PaymentResponseRenderer" method="paymentResponseFailureGET" multiParameterArray="true" id="paymentResponseFailureGET"/>
+        <log message="Payment response renderer processor : ${body}" id="PaymentResponseRendererProcessorFailureGETLogger"/>
+        <process ref="PaymentResponseRendererProcessor" id="PaymentResponseRendererProcessorFailureGET"/>
+        <log message="Request for Create Policy generation config : ${body}" id="CreatePolicyRequestGenerationConfigFailureGETLogger"/>
+        <process ref="CreateUserPolicyRequestConfig" id="CreateUserPolicyRequestConfigFailureGET"/>
+        <log message="Request for Create Policy generation cancelled due to policy purchase failure : ${body}" id="CreatePolicyResponseFailureGETLogger"/>
+        <bean ref="PaymentResponseRenderer" method="paymentFailureResponseRedirection" id="PaymentResponseRendererMethodFailureGET"/>
+      </when>
+    </choice>
+  </route>
+</camelContext>
+</blueprint>

@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<blueprint xmlns="http://www.osgi.org/xmlns/blueprint/v1.0.0"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xmlns:cxf="http://camel.apache.org/schema/blueprint/cxf"
+       xmlns:camel="http://camel.apache.org/schema/blueprint"
+       xmlns:cm="http://aries.apache.org/blueprint/xmlns/blueprint-cm/v1.1.0"
+       xsi:schemaLocation="http://www.osgi.org/xmlns/blueprint/v1.0.0 http://www.osgi.org/xmlns/blueprint/v1.0.0/blueprint.xsd
+        http://camel.apache.org/schema/blueprint/cxf http://camel.apache.org/schema/blueprint/cxf/camel-cxf.xsd http://camel.apache.org/schema/blueprint/camel-blueprint.xsd http://www.osgi.org/xmlns/blueprint/v1.0.0 http://www.osgi.org/xmlns/blueprint/v1.0.0/blueprint.xsd
+       http://camel.apache.org/schema/blueprint">
+<cxf:rsServer id="SaveProposalServiceEndpoint" address="/saveproposalservice" serviceClass="com.idep.service.SaveProposalService" loggingFeatureEnabled="true">
+	<cxf:providers>
+        <bean class="org.apache.cxf.rs.security.cors.CrossOriginResourceSharingFilter" />
+	</cxf:providers>
+</cxf:rsServer>
+<cm:property-placeholder persistent-id="AMQCustomProperties"> 
+</cm:property-placeholder> 
+		<bean id="jmsConnectionFactory"
+		   class="org.apache.activemq.ActiveMQConnectionFactory">
+		   <property name="brokerURL" value="${amqbroker.host}:${amqbroker.port}" />
+		   <property name="userName" value="${amqbroker.username}"/>
+		   <property name="password" value="${amqbroker.password}"/>
+		</bean>
+		<bean id="pooledConnectionFactory"
+		   class="org.apache.activemq.pool.PooledConnectionFactory" init-method="start" destroy-method="stop">
+		   <property name="maxConnections" value="${amq.maxConnections}" />
+		   <property name="connectionFactory" ref="jmsConnectionFactory" />
+		</bean>
+        <bean id="jmsConfig"
+		   class="org.apache.camel.component.jms.JmsConfiguration">
+		   <property name="connectionFactory" ref="pooledConnectionFactory"/>
+		   <property name="concurrentConsumers" value="${amq.concurrentConsumers}"/>
+		   <property name="mapJmsMessage" value="${amq.mapJmsMessage}" />
+		   <property name="maxConcurrentConsumers" value="${amq.maxConcurrentConsumers}" />
+		   <property name="asyncConsumer" value="${amq.asyncConsumer}" />
+		   <property name="asyncStartListener" value="${amq.asyncStartListener}" />
+		</bean>
+        <bean id="activemq"
+		    class="org.apache.activemq.camel.component.ActiveMQComponent">
+		    <property name="configuration" ref="jmsConfig"/>
+		    <property name="transacted" value="${amq.transacted}"/>
+		    <property name="cacheLevelName" value="${amq.cacheLevelName}" />
+		</bean>
+  <bean id="SaveProposalProcessor" class="com.idep.processors.SaveProposalProcessor"/>
+  <bean id="SaveProposalService" class="com.idep.service.SaveProposalService"/>
+  <bean id="SaveProposalServiceImpl" class="com.idep.service.impl.SaveProposalServiceImpl"/>
+  <bean id="SaveProposalServiceResponse" class="com.idep.response.SaveProposalServiceResponse"/>
+  <bean id="MapperReqProcessor" class="com.idep.processors.MapperReqProcessor"/>
+  <bean id="SaveProposalRespProcessor" class="com.idep.processors.SaveProposalRespProcessor"/>
+ 
+  <camelContext id="SaveProposalServiceId" xmlns="http://camel.apache.org/schema/blueprint">
+  	<route id="SaveProposalRoute">
+     	<from uri="cxfrs:bean:SaveProposalServiceEndpoint?continuationTimeout=90000"/>
+       		<log message="SaveProposal Service Started"/>
+    		<when id="SaveProposalReq">
+				<simple>${header.operationName} == "saveProposal"</simple>
+			    	<bean ref="SaveProposalServiceImpl" method="saveProposal" id="ProposalBean"/>
+					  <!--  <process ref="SaveProposalProcessor" id="SaveProposalProcessor"/>
+				       <when id="isException">
+					   <simple>${header.isException} == "False"</simple>
+					    <when id="proposalIdNotPresent">
+					     <simple>${header.isProposalIdPresent} == "False"</simple>
+					    <to pattern="InOut" uri="mapper://mapdata"/>
+	                    <process ref="MapperReqProcessor" id="SaveProposalMapperReqProcessor"/>
+					  </when> -->
+        		 <process ref="SaveProposalRespProcessor" id="SaveProposalRespProcessor"/>
+        		<bean ref="SaveProposalServiceResponse" method="sendGenericResponse"  id="saveProposalResponse"/>
+			    <log message="save proposal response : ${body}"/>
+			</when>
+			<when id="submitProposalReq">
+		    	<simple>${header.operationName} == "submitProposal"</simple>
+					<bean ref="SaveProposalServiceImpl" method="submitProposal" id="ProposalBean"/>
+					<process ref="SaveProposalProcessor" id="SaveProposalProcessor"/>
+					<bean ref="SaveProposalServiceResponse" method="sendGenericResponse"  id="submitProposalResponse"/>
+					<log message="submit proposal response : ${body}"/>
+			</when>  
+       </route>
+  </camelContext>
+</blueprint>

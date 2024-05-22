@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<blueprint xmlns="http://www.osgi.org/xmlns/blueprint/v1.0.0"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xmlns:cxf="http://camel.apache.org/schema/blueprint/cxf"
+       xsi:schemaLocation="
+       http://www.osgi.org/xmlns/blueprint/v1.0.0 http://www.osgi.org/xmlns/blueprint/v1.0.0/blueprint.xsd
+        http://camel.apache.org/schema/blueprint/cxf http://camel.apache.org/schema/blueprint/cxf/camel-cxf.xsd
+       http://camel.apache.org/schema/blueprint http://camel.apache.org/schema/blueprint/camel-blueprint.xsd">
+ 
+<cxf:rsServer id="PolicyDocDownloadEndpoint" address="/policydocdownload" serviceClass="com.idep.policydownload.service.PolicyDocDownloaderService" loggingFeatureEnabled="true">
+<cxf:providers>
+        <bean class="org.apache.cxf.rs.security.cors.CrossOriginResourceSharingFilter" />
+</cxf:providers>
+</cxf:rsServer>
+
+<bean id="PolicyDocDownloaderServiceImpl" class="com.idep.policydownload.impl.service.PolicyDocDownloaderServiceImpl"/>
+<bean id="PolicyDocDownloaderReqProcessor" class="com.idep.policydownload.req.processor.PolicyDocDownloaderReqProcessor"/>
+
+  <camelContext streamCache="true" id="PolicyDocDownloadContext" xmlns="http://camel.apache.org/schema/blueprint">
+    <route id="PolicyDocDownloadRoute">
+      <from uri="cxfrs:bean:PolicyDocDownloadEndpoint"/>
+      <bean ref="PolicyDocDownloaderServiceImpl" method="downloadPolicyDocument" id="PolicyDocDownloaderServiceImpl"/>
+      <process ref="PolicyDocDownloaderReqProcessor" id="PolicyDocDownloaderReqProcessor"/>
+      <log message="PolicyDocDownloaderService Execution Completed Successfully!!!"/>
+      <marshal>
+          <json prettyPrint="true" library="Jackson"/>
+        </marshal>
+    </route>
+  </camelContext>
+
+</blueprint>

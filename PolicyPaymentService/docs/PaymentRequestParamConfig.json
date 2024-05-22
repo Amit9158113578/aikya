@@ -1,0 +1,83 @@
+{
+  "documentType" : "PaymentRequestParam",
+  "carriers" : {
+    "royalsunder" : {
+      "health" : "NA",
+      "methodType" : "POST",
+      "car" : "quoteId",
+      "life" : "NA",
+      "bike" : "quoteId"
+    },
+    "cigna" : {
+      "health" : "AdditionalInfo4",
+      "methodType" : "POST",
+      "car" : "NA",
+      "life" : "NA",
+      "bike" : "NA"
+    },
+    "futuregen" : {
+      "health" : "TransactionID",
+      "methodType" : "POST",
+      "car" : "TransactionID",
+      "life" : "NA",
+      "bike" : "NA"
+    },
+    "kotak" : {
+      "health" : "NA",
+      "methodType" : "POST",
+      "car" : "txnid",
+      "life" : "NA",
+      "bike" : "txnid"
+    },
+    "adityab" : {
+      "health" : "SourceTxnId",
+      "methodType" : "POST",
+      "car" : "NA",
+      "life" : "NA",
+      "bike" : "NA"
+    },
+    "religare" : {
+      "health" : "txnid",
+      "methodType" : "GET",
+      "returnUrlKey" : "returnURL",
+      "car" : "NA",
+      "life" : "NA",
+      "bike" : "NA"
+    },
+    "reliance" : {
+      "health" : "NA",
+      "methodType" : "POST",
+      "car" : "ProposalNo",
+      "life" : "NA",
+      "bike" : "ProposalNo"
+    },
+    "star" : {
+      "health" : "referenceId",
+      "methodType" : "POST",
+      "car" : "NA",
+      "life" : "NA",
+      "bike" : "NA"
+    },
+    "nia" : {
+      "health" : "NA",
+      "methodType" : "POST",
+      "car" : "AdditionalInfo5",
+      "life" : "NA",
+      "bike" : "AdditionalInfo5"
+    },
+    "hdfc" : {
+      "health" : "CustomerId",
+      "methodType" : "POST",
+      "car" : "CustomerId",
+      "life" : "NA",
+      "bike" : "CustomerId"
+    },
+    "bhartiaxa" : {
+      "health" : "NA",
+      "methodType" : "POST",
+      "car" : "orderNo",
+      "life" : "NA",
+      "bike" : "orderNo"
+    }
+  }
+}

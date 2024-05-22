@@ -1,0 +1,14 @@
+{ "header":
+
+	{	
+		"deviceId":"ABCD12345",
+		"transactionName":"viewPolicyDoc"
+	},
+
+"body": {
+
+	"uKey":"0db3cecc098209f759494da3fb79eb4e",
+	"pKey":"28b5785db953601c32eca2d39c151655"
+
+}
+}

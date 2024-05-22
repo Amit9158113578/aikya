@@ -1,0 +1,226 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<blueprint xmlns="http://www.osgi.org/xmlns/blueprint/v1.0.0"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:cm="http://aries.apache.org/blueprint/xmlns/blueprint-cm/v1.1.0"
+	xmlns:cxf="http://camel.apache.org/schema/blueprint/cxf"
+	xsi:schemaLocation="
+       http://www.osgi.org/xmlns/blueprint/v1.0.0 http://www.osgi.org/xmlns/blueprint/v1.0.0/blueprint.xsd
+        http://camel.apache.org/schema/blueprint/cxf http://camel.apache.org/schema/blueprint/cxf/camel-cxf.xsd
+       http://camel.apache.org/schema/blueprint http://camel.apache.org/schema/blueprint/camel-blueprint.xsd">
+
+	<cxf:rsServer id="SOAPServiceEndpoint" address="/soapservice"
+		serviceClass="com.idep.soap.service.SoapService"
+		loggingFeatureEnabled="true">
+		<cxf:providers>
+			<bean
+				class="org.apache.cxf.rs.security.cors.CrossOriginResourceSharingFilter" />
+		</cxf:providers>
+	</cxf:rsServer>
+
+	<bean id="SoapService" class="com.idep.soap.service.SoapService" />
+	<bean id="CalcServiceImpl" class="com.idep.soap.impl.CalcServiceImpl" />
+	<bean id="SOAPRequestFormatter" class="com.idep.soap.service.SOAPRequestFormatter" />
+	<bean id="InvokeCarrierProcessor" class="com.idep.soap.service.InvokeCarrierProcessor" />
+	<bean id="SOAPResponseFormatter" class="com.idep.soap.service.SOAPResponseFormatter" />
+	<bean id="ConfigurationLoaderProcessor" class="com.idep.soap.service.ConfigurationLoaderProcessor" />
+	<bean id="ServiceResponse" class="com.idep.soap.impl.ServiceResponse" />
+	<bean id="JoltResponseValidator" class="com.idep.soap.validator.JoltResponseValidator" />
+	<bean id="SOAPResponseValidator" class="com.idep.soap.service.SOAPResponseValidator" />
+	<bean id="DBQuoteProcessor" class="com.idep.soap.util.DBQuoteProcessor" />
+	<bean id="AdditionalFieldsProcessor" class="com.idep.soap.service.AdditionalFieldsProcessor" />
+	<bean id="DBProposalProcessor" class="com.idep.soap.util.DBProposalProcessor" />
+	
+<cm:property-placeholder persistent-id="AMQCustomProperties"> 
+ </cm:property-placeholder> 
+
+<bean id="jmsConnectionFactory"
+   class="org.apache.activemq.ActiveMQConnectionFactory">
+   <property name="brokerURL" value="${amqbroker.host}:${amqbroker.port}" />
+   <property name="userName" value="${amqbroker.username}"/>
+   <property name="password" value="${amqbroker.password}"/>
+</bean>
+ 
+<bean id="pooledConnectionFactory"
+   class="org.apache.activemq.pool.PooledConnectionFactory" init-method="start" destroy-method="stop">
+   <property name="maxConnections" value="${amq.maxConnections}" />
+   <property name="connectionFactory" ref="jmsConnectionFactory" />
+</bean>
+ 
+<bean id="jmsConfig"
+   class="org.apache.camel.component.jms.JmsConfiguration">
+   <property name="connectionFactory" ref="pooledConnectionFactory"/>
+   <property name="concurrentConsumers" value="${amq.concurrentConsumers}"/>
+   <property name="mapJmsMessage" value="${amq.mapJmsMessage}" />
+   <property name="maxConcurrentConsumers" value="${amq.maxConcurrentConsumers}" />
+   <property name="asyncConsumer" value="${amq.asyncConsumer}" />
+   <property name="asyncStartListener" value="${amq.asyncStartListener}" />  
+</bean>
+ 
+ <bean id="activemq"
+    class="org.apache.activemq.camel.component.ActiveMQComponent">
+    <property name="configuration" ref="jmsConfig"/>
+    <property name="transacted" value="${amq.transacted}"/>
+    <property name="cacheLevelName" value="${amq.cacheLevelName}" />
+</bean>
+ <bean id="jmsConnectionFactorySecondary"
+   class="org.apache.activemq.ActiveMQConnectionFactory">
+   <property name="brokerURL" value="${amqbroker.secondaryhost}:${amqbroker.secondaryport}" />
+   <property name="userName" value="${amqbroker.username}"/>
+   <property name="password" value="${amqbroker.password}"/>
+</bean>
+ 
+<bean id="pooledConnectionFactorySecondary"
+   class="org.apache.activemq.pool.PooledConnectionFactory" init-method="start" destroy-method="stop">
+  <property name="maxConnections" value="${amq.maxConnections}" /> 
+   <property name="connectionFactory" ref="jmsConnectionFactorySecondary" />
+</bean>
+<bean id="jmsConfigSecondary"
+   class="org.apache.camel.component.jms.JmsConfiguration">
+    <property name="connectionFactory" ref="pooledConnectionFactorySecondary"/>
+   <property name="concurrentConsumers" value="${amq.concurrentConsumers}"/>
+   <property name="mapJmsMessage" value="${amq.mapJmsMessage}" />
+   <property name="maxConcurrentConsumers" value="${amq.maxConcurrentConsumers}" />
+   <property name="asyncConsumer" value="${amq.asyncConsumer}" />
+   <property name="asyncStartListener" value="${amq.asyncStartListener}" />  
+</bean>
+ 
+ <bean id="activemqSecondary"
+    class="org.apache.activemq.camel.component.ActiveMQComponent">
+    <property name="configuration" ref="jmsConfigSecondary"/>
+    <property name="transacted" value="${amq.transacted}"/>
+    <property name="cacheLevelName" value="${amq.cacheLevelName}" />
+</bean>
+	
+	<bean id="SoapServiceshutdownStrategy" class="org.apache.camel.impl.DefaultShutdownStrategy">
+		<property name="timeout" value="30" />
+	</bean>
+	<camelContext  trace="false" threadNamePattern="SOAPSERV" id="SOAPResponseCalculator" xmlns="http://camel.apache.org/schema/blueprint">
+	<threadPoolProfile poolSize="10" maxPoolSize="50" maxQueueSize="50" keepAliveTime="25" customId="true" defaultProfile="true" id="carreqPool"/> 
+	<threadPool  poolSize="10" maxPoolSize="50" maxQueueSize="50" keepAliveTime="25" id="bikeThreadPool" threadName="BikeThread" rejectedPolicy="DiscardOldest" />
+		<dataFormats>
+			<xmljson  skipWhitespace="true" trimSpaces="true" expandableProperties="properties" id="jsontoxml"/>
+			<xmljson forceTopLevelObject="true" skipNamespaces="true" removeNamespacePrefixes="true" id="xmltojson" />
+		</dataFormats>
+		<route id="SOAPServiceRoute">
+			<from uri="cxfrs:bean:SOAPServiceEndpoint" id="SOAPServiceEndpoint"/>
+			<!-- <from uri="activemq:queue:SOAPServiceQ" id="FromQ" /> -->
+			<choice id="SOAPServiceDecision">
+				<when id="SOAPCalcReq">
+					<simple>${header.operationName} == "calculateSoapResponse"</simple>
+					<log message="Flow in SOAPService Service :${body} "></log>
+					<bean ref="CalcServiceImpl" method="calculateResponse" id="ReqBean" />
+					<process ref="ConfigurationLoaderProcessor" id="ConfigLoaderProcessor" />
+					<choice>
+						<when>
+							<simple>${header.documentFound} == "True"</simple>
+							<to pattern="InOut"	uri="joltTransformer://invoke" /> 
+							<process ref="JoltResponseValidator" id="JoltResValidator" />
+							<choice>
+								<when>
+									<simple>${header.successRes} == "True"</simple>
+									<log message="before jsontoxml : ${body}"/>
+									<unmarshal ref="jsontoxml" id="SOAPjsontoxml"/>
+									<log message="after jsontoxml : ${body}"/>
+									<process ref="SOAPRequestFormatter" id="RequestFormatter" />
+									<choice>
+										<when>
+										<simple>${header.configDocumentFound} == "True"</simple>
+											<multicast>
+												<pipeline>
+													<to pattern="InOnly" uri="activemq:queue:DBStoreQ"/>										
+												</pipeline>
+												<pipeline>
+													<process ref="InvokeCarrierProcessor" id="InvokeCarrierProcessor" />
+													<multicast>
+														<pipeline>
+															<process ref="DBProposalProcessor" id="DBProposalProcessor" />
+															<choice>
+																<when>
+																	<simple>${header.sendToQ} == "True"</simple>
+																	<log message="sending response to DBStoreQ: ${body}" />
+																	<to pattern="InOnly" uri="activemq:queue:DBStoreQ" />
+																</when>
+															</choice>
+														</pipeline>
+														<pipeline>
+															<choice>
+																<when>
+																	<simple>${header.serviceDown} == "False"</simple>
+																	<process ref="SOAPResponseFormatter" id="SOAPResponseFormatter" />
+																	<choice>
+																		<when>
+																			<simple>${header.properResponseReceived} == "True"</simple>
+																			<log message="after SOAPResponseFormatter response formed : ${body} " />
+																			<marshal ref="xmltojson" id="SOAPxmltojson"/>
+																			<log message="after xmltojson : ${body} " />
+																			<process ref="SOAPResponseValidator" id="SOAPResponseValidator" />
+																			<choice>
+																				<when>
+																					<simple>${header.success} == "True"</simple>
+																					<process ref="ConfigurationLoaderProcessor" id="ConfigLoadProcessor" />
+																					<to pattern="InOut"	uri="joltTransformer://invoke" /> 
+																					<process ref="AdditionalFieldsProcessor" id="AdditionalFieldsProcessor" />
+																					<multicast>
+																					<pipeline>
+																						<process ref="DBQuoteProcessor" id="DBQuoteProcessor" />
+																						<choice>
+																							<when>
+																								<simple>${header.sendToQ} == "True"</simple>
+																								<log message="sending response to DBStoreQ: ${body}"/> 
+																								<to pattern="InOnly" uri="activemq:queue:DBStoreQ"/>
+																							</when>
+																						</choice>			
+																					</pipeline>
+																					<pipeline>
+																						<bean ref="ServiceResponse" method="sendResponse" id="ConfResponse"/>
+																					</pipeline>
+																					</multicast>
+																				</when>
+																				<when>
+																					<simple>${header.success} == "False"</simple>
+																					<log message="Failure Response received from carrier : ${body} "/>
+																					<bean ref="ServiceResponse" method="sendResponse" id="ConfResponse"/>
+																				</when>
+																			</choice>	
+																		</when>
+																		<when>
+																			<simple>${header.properResponseReceived} == "False"</simple>
+																			<log message="Proper Response not received from carrier : ${body} "/>
+																			<bean ref="ServiceResponse" method="sendResponse" id="ConfResponse"/>
+																		</when>
+																	</choice>	
+																</when>
+															<when>
+																<simple>${header.serviceDown} == "True"</simple>
+																<bean ref="ServiceResponse" method="sendResponse" id="ConfResponse"/>
+															</when>
+														</choice>
+													</pipeline>
+												</multicast>
+											</pipeline>
+											</multicast>
+										</when>
+										<when>
+											<simple>${header.configDocumentFound} == "False"</simple>
+											<log message="Configuration Document Not Found : ${body} "/>
+											<bean ref="ServiceResponse" method="sendResponse" id="ConfResponse"/>
+										</when>
+									</choice>
+								</when>
+								<when>
+									<simple>${header.successRes} == "False"</simple>
+									<log message="Failure response received from JOLT : ${body} "/>
+									<bean ref="ServiceResponse" method="sendResponse" id="ConfResponse"/>
+								</when>
+							</choice>
+						</when>
+						<when>
+							<simple>${header.documentFound} == "False"</simple>
+							<log message="Configuration Document Not Found : ${body} "/>
+							<bean ref="ServiceResponse" method="sendResponse" id="ConfigResponse"/>
+						</when>
+					</choice>
+				</when>
+			</choice>
+		</route>
+	</camelContext>
+</blueprint>

@@ -1,0 +1,193 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<blueprint xmlns="http://www.osgi.org/xmlns/blueprint/v1.0.0"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:cm="http://aries.apache.org/blueprint/xmlns/blueprint-cm/v1.1.0"
+	xmlns:cxf="http://camel.apache.org/schema/blueprint/cxf"
+	xsi:schemaLocation="
+       http://www.osgi.org/xmlns/blueprint/v1.0.0 http://www.osgi.org/xmlns/blueprint/v1.0.0/blueprint.xsd
+       http://camel.apache.org/schema/blueprint/cxf http://camel.apache.org/schema/blueprint/cxf/camel-cxf.xsd
+	   http://camel.apache.org/schema/blueprint http://camel.apache.org/schema/blueprint/camel-blueprint.xsd">
+
+	<cxf:rsServer id="BikeProposalEndpoint" address="/bikepolicyproposal"
+		serviceClass="com.idep.proposal.service.BikeProposalService"
+		loggingFeatureEnabled="true">
+		<cxf:providers>
+			<bean
+				class="org.apache.cxf.rs.security.cors.CrossOriginResourceSharingFilter" />
+		</cxf:providers>
+	</cxf:rsServer>
+
+	<bean id="ProposalExceptionProcessor"
+		class="com.idep.proposal.exception.processor.ProposalExceptionProcessor" />
+	<bean id="BikeProposalServiceImpl" class="com.idep.proposal.impl.service.BikeProposalServiceImpl" />
+	<bean id="BikePolicyCreatorImpl" class="com.idep.proposal.impl.service.BikePolicyCreatorImpl" />
+	<bean id="BikeProposalReqProcessor"
+		class="com.idep.proposal.req.processor.BikeProposalReqProcessor" />
+	<bean id="BikeProposalDBReqProcessor"
+		class="com.idep.proposal.req.processor.BikeProposalDBReqProcessor" />
+	<bean id="MasterPolicyReqProcessor" class="com.idep.policy.req.processor.MasterPolicyReqProcessor" />
+	<bean id="ProposalReqDBStore" class="com.idep.proposal.data.commit.ProposalReqDBStore" />
+	<bean id="ExecutionTerminator"
+		class="com.idep.proposal.exception.processor.ExecutionTerminator" />
+	<bean id="BikeProposalAddressProcessor"
+		class="com.idep.proposal.carrier.req.processor.BikeProposalAddressProcessor" />
+	<bean id="BikePolicyDocDownloadProcessor" class="com.idep.policy.download.BikePolicyDocDownloadProcessor" />
+	<bean id="UserProfileReqProcessor" class="com.idep.user.profile.processor.UserProfileReqProcessor" />
+	<bean id="PolicyDocumentReqProcessor"
+		class="com.idep.policy.document.req.processor.PolicyDocumentReqProcessor" />
+	<bean id="UserProfilePolicyUpdateProcessor"
+		class="com.idep.user.profile.processor.UserProfilePolicyUpdateProcessor" />
+	<bean id="PolicyDocViewerReqProcessor"
+		class="com.idep.policy.document.req.processor.PolicyDocViewerReqProcessor" />
+	<bean id="PolicyDocViewerReqHandler"
+		class="com.idep.policy.document.req.processor.PolicyDocViewerReqHandler" />
+	<bean id="PolicyDocJasperProcessor"
+		class="com.idep.policy.document.req.processor.PolicyDocJasperProcessor" />
+	<bean id="PolicyPDFSignProcessor"
+		class="com.idep.policy.document.req.processor.PolicyPDFSignProcessor" />
+	<bean id="PolicyPDFSignReqProcessor"
+		class="com.idep.policy.document.req.processor.PolicyPDFSignReqProcessor" />
+	<bean id="PolicyPDFResProcessor"
+		class="com.idep.policy.document.res.processor.PolicyPDFResProcessor" />
+	<bean id="EmailTemplateLoader"
+		class="com.idep.proposal.carrier.req.processor.EmailTemplateLoader" />
+	<bean id="TransformServiceRequest" class="com.idep.proposal.req.processor.TransformServiceRequest" />
+	<bean id="UpdateStageProcessor" class="com.idep.proposal.req.processor.UpdateStageProcessor" />
+	<bean id="ValidateResponse"
+		class="com.idep.proposal.carrier.res.processor.ValidateResponse" />
+	<bean id="TransformProposalRequest"
+		class="com.idep.proposal.carrier.req.processor.TransformProposalRequest" />
+	<bean id="BikeProposalLogProcessor" class="com.idep.carrier.log.processor.BikeProposalLogProcessor" />
+	<bean id="MapperResponseHandler"
+		class="com.idep.proposal.carrier.res.processor.MapperResponseHandler" />
+	<bean id="ValidatePaymentResponse" class="com.idep.policy.req.processor.ValidatePaymentResponse" />
+	<bean id="TransformPolicyRequest" class="com.idep.policy.req.processor.TransformPolicyRequest" />
+	<bean id="UpdatePolicyStageProcessor"
+		class="com.idep.policy.req.processor.UpdatePolicyStageProcessor" />
+	<bean id="PolicyDocumentReqQListener" class="com.idep.policy.download.PolicyDocumentReqQListener" />
+	<bean id="JoltPolicyResProcessor" class="com.idep.policy.res.processor.JoltPolicyResProcessor" />
+	<bean id="SOAPResultProcessor" class="com.idep.policy.res.processor.SOAPResultProcessor" />
+
+
+
+
+
+
+
+
+	<cm:property-placeholder persistent-id="AMQCustomProperties">
+	</cm:property-placeholder>
+
+	<bean id="jmsConnectionFactory" class="org.apache.activemq.ActiveMQConnectionFactory">
+		<property name="brokerURL" value="${amqbroker.host}:${amqbroker.port}" />
+		<property name="userName" value="${amqbroker.username}" />
+		<property name="password" value="${amqbroker.password}" />
+	</bean>
+
+	<bean id="pooledConnectionFactory" class="org.apache.activemq.pool.PooledConnectionFactory"
+		init-method="start" destroy-method="stop">
+		<property name="maxConnections" value="${amq.maxConnections}" />
+		<property name="connectionFactory" ref="jmsConnectionFactory" />
+	</bean>
+
+	<bean id="jmsConfig" class="org.apache.camel.component.jms.JmsConfiguration">
+		<property name="connectionFactory" ref="pooledConnectionFactory" />
+		<property name="concurrentConsumers" value="${amq.concurrentConsumers}" />
+		<property name="mapJmsMessage" value="${amq.mapJmsMessage}" />
+		<property name="maxConcurrentConsumers" value="${amq.maxConcurrentConsumers}" />
+		<property name="asyncConsumer" value="${amq.asyncConsumer}" />
+		<property name="asyncStartListener" value="${amq.asyncStartListener}" />
+	</bean>
+
+	<bean id="activemq" class="org.apache.activemq.camel.component.ActiveMQComponent">
+		<property name="configuration" ref="jmsConfig" />
+		<property name="transacted" value="${amq.transacted}" />
+	</bean>
+	<bean id="jmsConnectionFactorySecondary" class="org.apache.activemq.ActiveMQConnectionFactory">
+		<property name="brokerURL" value="${amqbroker.bikeHost}:${amqbroker.bikePort}" />
+		<property name="userName" value="${amqbroker.bikeUsername}" />
+		<property name="password" value="${amqbroker.bikePassword}" />
+	</bean>
+	<bean id="pooledConnectionFactorySecondary" class="org.apache.activemq.pool.PooledConnectionFactory"
+		init-method="start" destroy-method="stop">
+		<property name="maxConnections" value="${amq.maxConnections}" />
+		<property name="connectionFactory" ref="jmsConnectionFactorySecondary" />
+	</bean>
+	<bean id="jmsConfigSecondary" class="org.apache.camel.component.jms.JmsConfiguration">
+		<property name="connectionFactory" ref="pooledConnectionFactorySecondary" />
+		<property name="concurrentConsumers" value="${amq.concurrentConsumers}" />
+		<property name="mapJmsMessage" value="${amq.mapJmsMessage}" />
+		<property name="maxConcurrentConsumers" value="${amq.maxConcurrentConsumers}" />
+		<property name="asyncConsumer" value="${amq.asyncConsumer}" />
+		<property name="asyncStartListener" value="${amq.asyncStartListener}" />
+	</bean>
+
+	<bean id="activemqSecondary" class="org.apache.activemq.camel.component.ActiveMQComponent">
+		<property name="configuration" ref="jmsConfigSecondary" />
+		<property name="transacted" value="${amq.transacted}" />
+		<property name="cacheLevelName" value="${amq.cacheLevelName}" />
+	</bean>
+	<camelContext id="BikeProposalContext"
+		xmlns="http://camel.apache.org/schema/blueprint">
+		<onException>
+			<exception>com.idep.proposal.exception.processor.ExecutionTerminator</exception>
+			<exception>java.lang.Exception</exception>
+			<handled>
+				<constant>true</constant>
+			</handled>
+			<log message="Bike main proposal process terminated" />
+			<process ref="ProposalExceptionProcessor" customId="true"
+				id="ProposalExceptionProcessor" />
+			<bean ref="BikeProposalServiceImpl" method="sendMessage"
+				id="BikeProposalResponse" />
+		</onException>
+
+		<route id="BikeProposalRoute">
+			<from uri="cxfrs:bean:BikeProposalEndpoint?continuationTimeout=120000" />
+			<choice id="PolicyProposalDecision">
+				<when id="BikeProposalReq">
+					<simple>${header.operationName} == "submitBikeProposal"</simple>
+					<process ref="TransformProposalRequest" id="BikeTransformProposalRequest" />
+					<choice id="ProposalStatus">
+						<when id="BikePolicyDateStatus">
+							<simple>${header.requoteCalculationFlag} == "N"</simple>
+							<recipientList>
+								<simple>${header.bikeproposalService}</simple>
+							</recipientList>
+						</when>
+					</choice>
+					<bean ref="BikeProposalServiceImpl" method="sendMessage"
+						id="BikeProposalResponse" />
+				</when>
+				<when id="BikePolicyReq">
+					<simple>${header.operationName} == "createBikePolicy"</simple>
+					<process ref="ValidatePaymentResponse" id="ValidatePaymentResponse" />
+					<choice id="BikePolicyIssueFlagStatus">
+						<when id="BikePolicyIssueFlag">
+							<simple>${header.policyIssuedFlag} == "N"</simple>
+							<multicast id="BikePropReq">
+								<pipeline id="addPaymentResponseInProposal">
+									<process ref="ProposalReqDBStore" id="BIKEPolicyResDBStore" />
+								</pipeline>
+								<pipeline id="policyCreation">
+									<process ref="MasterPolicyReqProcessor" id="MasterPolicyReqProcessor" />
+									<when id="BikePolicyDateStatus">
+										<simple>${header.invokePolicyService} == "Y"</simple>
+										<recipientList>
+											<simple>${header.bikePolicyService}</simple>
+										</recipientList>
+									</when>
+									<bean ref="BikeProposalServiceImpl" method="sendMessage"
+										id="BikePolicyResponse" />
+								</pipeline>
+							</multicast>
+						</when>
+						<otherwise>
+							<bean ref="BikeProposalServiceImpl" method="sendMessage"
+								id="BikePolicyIssuedResponse" />
+						</otherwise>
+					</choice>
+				</when>
+			</choice>
+		</route>
+	</camelContext>
+</blueprint>

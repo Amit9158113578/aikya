@@ -1,0 +1,249 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<blueprint xmlns="http://www.osgi.org/xmlns/blueprint/v1.0.0"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:cxf="http://camel.apache.org/schema/blueprint/cxf"
+	xsi:schemaLocation="
+       http://www.osgi.org/xmlns/blueprint/v1.0.0 http://www.osgi.org/xmlns/blueprint/v1.0.0/blueprint.xsd
+        http://camel.apache.org/schema/blueprint/cxf http://camel.apache.org/schema/blueprint/cxf/camel-cxf.xsd
+       http://camel.apache.org/schema/blueprint http://camel.apache.org/schema/blueprint/camel-blueprint.xsd">
+
+	<cxf:rsServer id="ReligareProposalEndpoint" address="/ReligareHealthPolicyProposal"
+		serviceClass="com.idep.proposal.service.ProposalSubmitService"
+		loggingFeatureEnabled="true">
+		<cxf:providers>
+			<bean
+				class="org.apache.cxf.rs.security.cors.CrossOriginResourceSharingFilter" />
+		</cxf:providers>
+	</cxf:rsServer>
+
+	<bean id="ReligareHealthProposalhutdownStrategy" class="org.apache.camel.impl.DefaultShutdownStrategy">
+		<property name="timeout" value="30" />
+	</bean>
+
+	<!-- <bean id="religarehttp" class="org.apache.camel.component.http.HttpComponent">
+		<property name="camelContext" ref="ReligareProposalContext" />
+		<property name="httpConnectionManager" ref="religareHttpConnectionManager" />
+	</bean>
+
+	<bean id="reliagrehttps" class="org.apache.camel.component.http.HttpComponent">
+		<property name="camelContext" ref="ReligareProposalContext" />
+		<property name="httpConnectionManager" ref="religareHttpConnectionManager" />
+	</bean> -->
+
+	<bean id="religareHttpConnectionManager"
+		class="org.apache.commons.httpclient.MultiThreadedHttpConnectionManager">
+		<property name="params" ref="religareHttpConnectionManagerParams" />
+	</bean>
+
+	<bean id="religareHttpConnectionManagerParams"
+		class="org.apache.commons.httpclient.params.HttpConnectionManagerParams">
+		<property name="defaultMaxConnectionsPerHost" value="5" />
+		<property name="maxTotalConnections" value="100" />
+		<property name="connectionTimeout" value="10000" />
+		<property name="soTimeout" value="60000" />
+	</bean>
+
+
+	<camelContext streamCache="true" threadNamePattern="HLTHPROPRELIG"
+		id="ReligareProposalContext" xmlns="http://camel.apache.org/schema/blueprint">
+		<dataFormats>
+			<xmljson forceTopLevelObject="true" namespaceLenient="true"
+				rootName="o" skipWhitespace="true" trimSpaces="true" skipNamespaces="true"
+				removeNamespacePrefixes="true"
+				expandableProperties="partyDOList partyQuestionDOList partyAddressDOList"
+				id="Religarejsonxml" />
+			<xmljson forceTopLevelObject="false" skipWhitespace="true"
+				trimSpaces="true" skipNamespaces="true" removeNamespacePrefixes="true"
+				id="xmljson" />
+			<xmljson forceTopLevelObject="true" namespaceLenient="true"
+				rootName="o" skipWhitespace="true" trimSpaces="true" skipNamespaces="true"
+				removeNamespacePrefixes="true" id="ReligarePolicyjsonxml" />
+		</dataFormats>
+		<onException>
+			<exception>java.net.SocketTimeoutException</exception>
+			<exception>java.net.SocketException</exception>
+			<handled>
+				<constant>true</constant>
+			</handled>
+			<log message="Religare Health proposal service seems to be down" />
+			<process ref="ProposalExceptionProcessor" customId="true"
+				id="ReligareHealthPropExcepProcessor" />
+		</onException>
+		<onException>
+			<exception>com.idep.policy.exception.processor.ExecutionTerminator</exception>
+			<exception>java.lang.Exception</exception>
+			<handled>
+				<constant>true</constant>
+			</handled>
+			<log message="Religare Health proposal service Exception occure" />
+			<process ref="ProposalExceptionProcessor" customId="true"
+				id="ReligareHealthPropExcepProcessor" />
+		</onException>
+		<route id="ReligareProposalRoute">
+			<from uri="cxfrs:bean:ReligareProposalEndpoint" />
+			<choice id="ReligareHealthPolicyProposalDecision">
+				<when id="ReligareHealthProposalReq">
+					<simple>${header.operationName} == "submitHealthProposal"</simple>
+					<bean ref="ProposalSubmitServiceImpl" method="submitProposal"
+						id="ReligateProposalSubmitReq" />
+					<process ref="ProposalReqProcessor" id="ReligareProposalReqProcess" />
+					<process ref="HealthProposalReqLogProcessor" id="HDFCErgoHealthProReqLogProcessor" />
+					<process ref="HealthPolicyLogProcessor" id="ReligareHealthLogProcessor1" />
+					<!-- <when id="baseEnvStatusTrue">
+						<simple>${header.baseEnvStatus} == "true"</simple>
+						<log message="Base env status true" />
+						<to uri="direct:proposalCreateRequest" />
+					</when>
+					<when id="baseEnvStatusFalse">
+						<simple>${header.baseEnvStatus} == "false"</simple>-->
+						<log message="Base env status false" />
+						<multicast id="ReligareProposalMessageSender">
+							<pipeline id="ReligareProposalQMessage">
+								<to uri="direct:proposalCreateRequest" />
+							</pipeline>
+							<pipeline> 
+								<process ref="ProposerDataProcessor" id="ReligareProposerDataProcessor" />
+								<process ref="ProposerReqRiderProcessor" id="ReligareProposerReqRiderProcessor" />
+								<process ref="ProposalAddressProcessor" id="HDFCErgoHealthAddressProcessor" />
+								<process ref="HealthPolicyLogProcessor" id="ReligareHealthLogProcessor2" />
+								<to pattern="InOut" uri="xpathmapper://xpathmapdata" id="ReligareReqXPathMapper" />
+								<unmarshal ref="Religarejsonxml" id="ReligareReqJSONXML" />
+								<process ref="ReligareSOAPRequestFormatter" id="ReligareSOAPRequestFormatter" />
+								<setHeader headerName="Content-Type">
+									<simple>text/xml</simple>
+								</setHeader>
+								<process ref="HealthProposalServiceReqLogProcessor" id="ReligareServiceReqLogger" />
+								<process ref="HealthPolicyLogProcessor" id="ReligareHealthLogProcessor3" />
+								<to pattern="InOut" uri="webservconsumer://invoke" id="ReligareProposalURL" />
+								<process ref="HealthProposalServiceResLogProcessor" id="ABHIServiceResLogProcessor" />
+								<process ref="ReligareSOAPResponseFormatter" id="ReligareSOAPResponseFormatter" />
+								<marshal ref="xmljson" id="ReligareResXMLJSON" />
+								<process ref="ReligareHealthProposalResponseValidator" id="RelHealthPropRespValidator" />
+								<choice id="ReligareHealthCarrierProposalResp">
+									<when id="ReligareHealthProposalSuccessResp">
+										<simple>${header.reqFlag} == "True"</simple>
+											<process ref="ProposalResHandler" id="ReligareProposalResHandlerProcess" />
+											<to pattern="InOut" uri="mapper://mapdata" />
+											<process ref="ProposalReqHandler" id="ReligareProposalMapperResponse" />
+											<process ref="ProposalReqDBStore" id="ReligareProposalResDBStore" />
+											<process ref="ProposalResProcessor" id="ReligareProposalResProcessor" />
+											<bean ref="ProposalSubmitServiceImpl" method="sendMessage" />
+											<marshal>
+												<json prettyPrint="true" library="Jackson" />
+											</marshal>
+									</when>
+									<when id="ReligareHealthProposalFailureResp">
+										<simple>${header.reqFlag} == "False"</simple>
+											<log message="Religare Error response received " />
+											<bean ref="ProposalSubmitServiceImpl" method="submitProposal" id="ReligareHealthProposalResponse"/>
+									</when>
+							</choice>	
+											
+							 </pipeline>
+						</multicast>
+					<!--</when> -->
+				</when>
+				<when id="ReligareHealthPolicyCreator">
+					<simple>${header.operationName} == "createPolicy"</simple>
+					<log message="Religare policy create request received" />
+					<bean ref="PolicySubmitServiceImpl" method="submitPolicy"
+						id="ReligarePolicyServiceRequest" />
+					<process ref="HealthPolicyLogProcessor" id="ABHIHealthPolicyLogProcessor" />
+					<multicast>
+						<pipeline>
+							<process ref="PaymentResponseUpdateProcessor" id="RELHealthPaymentResProcessor" />
+							<process ref="ProposalReqDBStore" id="ReligareHealthPolicyResDBStore" />
+							<log message="Payment response added in database" />
+							<process ref="HealthPolicyLogProcessor" id="ReligareHealthLogProcessor4" />
+						</pipeline>
+						<pipeline>
+							<process ref="PaymentResponseValidator" id="ReligarePaymentResValidator" />
+							<choice id="ReligarePaymentResponse">
+						      <when id="ReligarePaymentResponseReq">
+							    <simple>${header.reqFlag} == "True"</simple>
+							<process ref="HealthPolicyReqProcessor" id="RELGIGAREHealthPolicyReqProcessor" />
+							<to pattern="InOut" uri="xpathmapper://xpathmapdata" id="ReligareReqXPathMapper" />
+							<unmarshal ref="ReligarePolicyjsonxml" id="ReligarePolicyReqJSONXML" />
+							<process ref="ReligarePolicySOAPRequestFormatter" id="ReligarePolicySOAPRequestFormatter" />
+							<setHeader headerName="Content-Type">
+								<simple>text/xml</simple>
+							</setHeader>
+							<process ref="HealthPolicyServiceReqLog" id="ABHIHealthPolicyServiceReqLog" />
+							<process ref="HealthPolicyLogProcessor" id="ReligareHealthLogProcessor5" />
+							<to pattern="InOut" uri="webservconsumer://invoke" id="ReligarePolicyURL" />
+							<process ref="HealthPolicyServiceResLog" id="ABHIHealthPolicyServiceResLog" />
+							<process ref="ReligarePolicySOAPResponseFormatter" id="ReligarePolicySOAPResponseFormatter" />
+							<marshal ref="xmljson" id="ReligareResXMLJSON" />
+							<process ref="CarrierPolicyResponseProcessor" id="CarrierPolicyResponseProcessor" />
+							<to pattern="InOut" uri="mapper://mapdata" id="RELGIGAREPolicyReqMapper" />
+							<process ref="HealthPolicyReqHandler" id="RELGIGAREHealthPolicyReqHandler" />
+							<process ref="ProposalReqDBStore" id="HDFCErgoHealthProposalReqDBStore" />
+							<process ref="HealthPolicyLogProcessor" id="ReligareHealthLogProcessor6" />
+							<process ref="HealthPolicyResHandler" id="RELGIGAREHealthPolicyRespHandler" />
+							<to pattern="InOut" uri="mapper://mapdata" id="RELGIGAREPolicyResMapperUI" />
+							<process ref="HealthPolicyReqHandler" id="RELGIGAREHealthPolicyRes" />
+							<multicast>
+								<pipeline>
+									<process ref="UserProfileReqProcessor" id="RELGIGAREUserProfileReqProcessor" />
+									<to pattern="InOnly" uri="activemq:queue:ReligarePolicyDocReqQ"
+										id="ReligarePolicyDocReqQ" />
+								</pipeline>
+								<pipeline>
+									<process ref="HealthPolicyResLogProcessor" id="ReligarePolicyResLogProcessor" />
+									<process ref="HealthPolicyLogProcessor" id="ReligareHealthLogProcessor7" />
+									<process ref="HealthPolicyResProcessor" id="HRELGIGAREHeathPolicyResProcessor" />
+									<bean ref="PolicySubmitServiceImpl" method="sendMessage"
+										id="ReligarePolicyServiceResponse" />
+								</pipeline>
+							</multicast>
+							 </when>
+							   <when id="ReligareProposalUPDTError">
+									<simple>${header.reqFlag} == "False"</simple>
+									<log message="Religare payment error " />
+									<bean ref="PolicySubmitServiceImpl" method="sendMessage" />
+							</when>
+						   </choice>
+						</pipeline>
+					</multicast>
+				</when>
+			</choice>
+		</route>
+		<route id="ReligareHealthPolicyDocReqQListener">
+			<from uri="activemq:queue:ReligarePolicyDocReqQ" id="ReligareHealthPolicyDocReqQ">
+				<description />
+			</from>
+			<bean ref="PolicyDocumentReqQListener" method="onMessage"
+				id="ReligareHealthPolicyReqQListener" />
+			<process ref="PolicyDocumentReqProcessor" id="ReligarePolicyDocumentReqProcessor" />
+			<process ref="HealthPolicyDocDownloadLogReq" id="ReligareDocDownloadLogReq" />
+			<process ref="HealthPolicyLogProcessor" id="ReligareHealthLogProcessor8" />
+			<to pattern="InOut" uri="xpathmapper://xpathmapdata" id="ReligarePolicyDocXPathMapper" />
+			<unmarshal ref="Religarejsonxml" id="ReligarePDFReqJSONXML" />
+			<process ref="ReligarePolicyDocSOAPRequestFormatter" id="ReligarePolicyDocSOAPRequestFormatter" />
+			<setHeader headerName="Content-Type">
+				<simple>text/xml</simple>
+			</setHeader>
+			<process ref="HealthPolicyLogProcessor" id="ReligareHealthLogProcessor9" />
+			<log message="Religare Health Document Request : ${body}" />
+			<to pattern="InOut" uri="webservconsumer://invoke" id="ReligarePolicyPDFURL" />
+			<log message="Religare Health Document Response : ${body}" />
+			<process ref="ReligarePolicyDocSOAPResponseFormatter" id="ReligarePolicyDocSOAPResponseFormatter" />
+			<process ref="PolicyDocumentResProcessor" id="ReligarePolicyDocumentResProcessor" />
+			<process ref="HealthPolicyDocDownloadLogRes" id="ReligareDocDownloadLogRes" />
+			<process ref="UserProfilePolicyUpdateProcessor" id="RelUserProfilePolicyUpdateProcessor" />
+		</route>
+			<route id="createProposalRoute">
+			<from uri="direct:proposalCreateRequest" />
+			<log message="Religare Health proposal request sent to database" />
+			<process ref="HealthProposalDBReqProcessor" id="ReligareHealthProposalDBReqProcessorBASE" />
+			<process ref="HealthPolicyLogProcessor" id="ReligareHealthLogProcessor10" />
+			<to pattern="InOut" uri="xpathmapper://xpathmapdata" id="ReligarePolicies365BikeXPathMapperBASE" />
+			<process ref="ProposalReqDBStore" id="ReligareProposalReqDBStoreBASE" />
+			<process ref="ProposalResProcessor" id="ReligareProposalResProcessorBASE" />
+			<bean ref="ProposalSubmitServiceImpl" method="sendMessage"
+				id="ReligareHealthProposalResponseBASE" />
+			<marshal>
+				<json prettyPrint="true" library="Jackson" />
+			</marshal>
+		</route> 
+	</camelContext>
+</blueprint>

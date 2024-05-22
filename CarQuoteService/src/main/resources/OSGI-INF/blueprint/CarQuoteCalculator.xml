@@ -1,0 +1,124 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<blueprint xmlns="http://www.osgi.org/xmlns/blueprint/v1.0.0"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	   xmlns:cm="http://aries.apache.org/blueprint/xmlns/blueprint-cm/v1.1.0"
+       xmlns:cxf="http://camel.apache.org/schema/blueprint/cxf"
+       xsi:schemaLocation="
+       http://www.osgi.org/xmlns/blueprint/v1.0.0 http://www.osgi.org/xmlns/blueprint/v1.0.0/blueprint.xsd
+        http://camel.apache.org/schema/blueprint/cxf http://camel.apache.org/schema/blueprint/cxf/camel-cxf.xsd
+       http://camel.apache.org/schema/blueprint http://camel.apache.org/schema/blueprint/camel-blueprint.xsd">
+ 
+<cxf:rsServer id="CarQuoteEndpoint" address="/carquoteservice" serviceClass="com.idep.carquote.service.CarQuoteCalcService" loggingFeatureEnabled="true">
+<cxf:providers>
+        <bean class="org.apache.cxf.rs.security.cors.CrossOriginResourceSharingFilter" />
+</cxf:providers>
+</cxf:rsServer>
+
+<bean id="CarQuoteCalcServiceImpl" class="com.idep.carquote.impl.service.CarQuoteCalcServiceImpl"/>
+<bean id="CarMQMsgProcessor" class="com.idep.carquote.impl.service.CarMQMsgProcessor"/>
+<bean id="CarQuoteReqProcessor" class="com.idep.carquote.req.processor.CarQuoteReqProcessor" />
+<bean id="CarQuoteIDVReqProcessor" class="com.idep.carquote.req.processor.CarQuoteIDVReqProcessor" />
+<bean id="CarRequestQProcessor" class="com.idep.carquote.req.processor.CarRequestQProcessor" />
+<bean id="CarQuoteResponse" class="com.idep.carquote.response.CarQuoteResponse"/>
+<bean id="CarExtServiceReqProcessor" class="com.idep.carquote.ext.form.req.CarExtServiceReqProcessor"/>
+<bean id="CarQuoteRequestListener" class="com.idep.listener.core.CarQuoteRequestListener"/>
+<bean id="ExceptionMQMSGProcessor" class="com.idep.carquote.exception.processor.ExceptionMQMSGProcessor"/>
+<bean id="ExecutionTerminator" class="com.idep.carquote.exception.processor.ExecutionTerminator"/>
+<bean id="CarQuoteLoggerProcessor" class="com.idep.carquote.carrier.log.processor.CarQuoteLoggerProcessor"/>
+<bean id="PremiumRatioCalculateProcessor" class="com.idep.carquote.res.processor.PremiumRatioCalculateProcessor" />
+<bean id="ResponseQueueProcessor" class="com.idep.carquote.response.ResponseQueueProcessor"/>
+<bean id="ValidateServiceRequest" class="com.idep.carquote.req.processor.ValidateServiceRequest"/>
+<bean id="TransformIDVRequest" class="com.idep.carquote.req.processor.TransformIDVRequest"/>
+<bean id="TransformQuoteRequest" class="com.idep.carquote.req.processor.TransformQuoteRequest"/>
+<bean id="ValidateIDVServiceResponse" class="com.idep.carquote.response.ValidateIDVServiceResponse"/>
+<bean id="CalculatePolicyDateProcessor" class="com.idep.carquote.req.processor.CalculatePolicyDateProcessor"/>
+<bean id="UpdateStageProcessor" class="com.idep.carquote.req.processor.UpdateStageProcessor"/>
+<bean id="ValidateQuoteServiceResponse" class="com.idep.carquote.res.processor.ValidateQuoteServiceResponse"/>
+
+
+
+<cm:property-placeholder persistent-id="AMQCustomProperties"> 
+ </cm:property-placeholder> 
+
+<bean id="jmsConnectionFactory"
+   class="org.apache.activemq.ActiveMQConnectionFactory">
+   <property name="brokerURL" value="${amqbroker.carHost}:${amqbroker.carPort}" />
+   <property name="userName" value="${amqbroker.carUsername}"/>
+   <property name="password" value="${amqbroker.carPassword}"/>
+</bean>
+ 
+<bean id="pooledConnectionFactory"
+   class="org.apache.activemq.pool.PooledConnectionFactory" init-method="start" destroy-method="stop">
+   <property name="maxConnections" value="${amq.maxConnections}" />
+   <property name="connectionFactory" ref="jmsConnectionFactory" />
+</bean>
+<bean id="jmsConfig"
+   class="org.apache.camel.component.jms.JmsConfiguration">
+   <property name="connectionFactory" ref="pooledConnectionFactory"/>
+   <property name="concurrentConsumers" value="${amq.concurrentConsumers}"/>
+   <property name="mapJmsMessage" value="${amq.mapJmsMessage}" />
+   <property name="maxConcurrentConsumers" value="${amq.maxConcurrentConsumers}" />
+   <property name="asyncConsumer" value="${amq.asyncConsumer}" />
+   <property name="asyncStartListener" value="${amq.asyncStartListener}" />  
+</bean>
+ 
+ <bean id="activemq"
+    class="org.apache.activemq.camel.component.ActiveMQComponent">
+    <property name="configuration" ref="jmsConfig"/>
+    <property name="transacted" value="${amq.transacted}"/>
+    <property name="cacheLevelName" value="${amq.cacheLevelName}" />
+</bean>
+
+<bean id="jmsConnectionFactorySecondary"
+   class="org.apache.activemq.ActiveMQConnectionFactory">
+   <property name="brokerURL" value="${amqbroker.secondaryhost}:${amqbroker.secondaryport}" />
+   <property name="userName" value="${amqbroker.username}"/>
+   <property name="password" value="${amqbroker.password}"/>
+</bean>
+ 
+<bean id="pooledConnectionFactorySecondary"
+   class="org.apache.activemq.pool.PooledConnectionFactory" init-method="start" destroy-method="stop">
+  <property name="maxConnections" value="${amq.maxConnections}" /> 
+   <property name="connectionFactory" ref="jmsConnectionFactorySecondary" />
+</bean>
+<bean id="jmsConfigSecondary"
+   class="org.apache.camel.component.jms.JmsConfiguration">
+   <property name="connectionFactory" ref="pooledConnectionFactorySecondary"/>
+   <property name="concurrentConsumers" value="${amq.concurrentConsumers}"/>
+   <property name="mapJmsMessage" value="${amq.mapJmsMessage}" />
+   <property name="maxConcurrentConsumers" value="${amq.maxConcurrentConsumers}" />
+   <property name="asyncConsumer" value="${amq.asyncConsumer}" />
+   <property name="asyncStartListener" value="${amq.asyncStartListener}" />  
+</bean>
+ 
+ <bean id="activemqSecondary"
+    class="org.apache.activemq.camel.component.ActiveMQComponent">
+    <property name="configuration" ref="jmsConfigSecondary"/>
+    <property name="transacted" value="${amq.transacted}"/>
+    <property name="cacheLevelName" value="${amq.cacheLevelName}" />
+</bean>
+
+<bean id="CarQuoteshutdownStrategy" class="org.apache.camel.impl.DefaultShutdownStrategy">
+        <property name="timeout" value="30"/>
+</bean>
+
+ 
+<camelContext threadNamePattern="CARQUOREQ" id="CarQuoteCalculator" xmlns="http://camel.apache.org/schema/blueprint">
+  <threadPoolProfile poolSize="10" maxPoolSize="50" maxQueueSize="50" customId="true" id="carReqPool"/> <!--  keepAliveTime="25"  --> 
+  <onException>
+    <exception>com.idep.carquote.exception.processor.ExecutionTerminator</exception>
+    <handled>
+      <constant>true</constant>
+    </handled>
+    <log message="car quote service Terminated "/>
+    <process ref="ExceptionMQMSGProcessor" customId="true" id="CarExceptionQuote"/>
+  </onException>
+  <route id="CarQuoteCalculatorRoute">
+    <from uri="cxfrs:bean:CarQuoteEndpoint"/>
+     <bean ref="CarQuoteCalcServiceImpl" method="calculateQuote" id="CarQuoteReqBean"/>
+     <process ref="CarQuoteReqProcessor" id="CarQuoteReqProcessor" />
+     <bean ref="CarQuoteResponse" method="sendGenericResponse" id="CarQuoteResponse"/>  
+  </route>
+</camelContext>
+
+</blueprint>

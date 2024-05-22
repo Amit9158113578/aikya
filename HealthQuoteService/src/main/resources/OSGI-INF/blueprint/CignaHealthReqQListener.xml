@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<blueprint xmlns="http://www.osgi.org/xmlns/blueprint/v1.0.0"
+       xmlns:camel="http://camel.apache.org/schema/blueprint"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xsi:schemaLocation="http://www.osgi.org/xmlns/blueprint/v1.0.0 http://www.osgi.org/xmlns/blueprint/v1.0.0/blueprint.xsd
+       http://camel.apache.org/schema/blueprint http://camel.apache.org/schema/blueprint/camel-blueprint.xsd">
+
+<camelContext trace="false" streamCache="true" threadNamePattern="CIGNAQUOREQ" id="CignaHealthReqQContext" xmlns="http://camel.apache.org/schema/blueprint">
+  <dataFormats>
+    <xmljson forceTopLevelObject="true" skipWhitespace="true" expandableProperties="quotationProductDOList quotationProductInsuredDOList quotationProductAddOnDOList" trimSpaces="true" skipNamespaces="true" removeNamespacePrefixes="true" id="Cignajsonxml"/>
+    <xmljson forceTopLevelObject="true" skipWhitespace="true" trimSpaces="true" skipNamespaces="true" removeNamespacePrefixes="true" id="Cignaxmljson"/>
+  </dataFormats>
+  <onException>
+    <exception>java.net.SocketTimeoutException</exception>
+    <handled>
+      <constant>true</constant>
+    </handled>
+    <log message="Cigna Health service not responded within stipulated time frame"/>
+    <process ref="ExceptionMQMSGProcessor" customId="true" id="CignaHealthExceptionMQMSGProcessor"/>
+    <to pattern="InOnly" uri="activemq:queue:CignaHealthResQ?timeToLive=120000&amp;includeSentJMSMessageID=true"/>
+  </onException>
+   <onException>
+    <exception>com.idep.healthquote.exception.processor.ExecutionTerminator</exception>
+    <exception>java.lang.Exception</exception>
+    <handled>
+      <constant>true</constant>
+    </handled>
+    <log message="Cigna Health quote process terminated"/>
+    <process ref="ExceptionMQMSGProcessor" customId="true" id="CignaHealthExceptionMQMSGProcessor"/>
+    <to pattern="InOnly" uri="activemq:queue:CignaHealthResQ?timeToLive=120000&amp;includeSentJMSMessageID=true"/>
+  </onException>
+  <route id="CignaHealthReqQListener">
+    <from uri="activemq:queue:CignaHealthReqQ" id="FromCignaHealthReqQ">
+      <description/>
+    </from>
+    <bean ref="P365HealthReqQListener" method="onMessage" id="CignaHealthReqQBean"/>
+    <process ref="HealthRequestQProcessor" id="CignaHealthReqQProcessor"/>
+    <process ref="HealthQuoteLoggerProcessor" id="CignaQuoteLoggerProcessor1"/>
+    <process ref="ExternalServiceReqProcessor" id="CignaServiceReqProcessor"/>
+    <process ref="CarrierDataLoader" id="CarrierDataLoader"/>
+	<process ref="CignaSumInsuredReqProcessor" id="CignaSIReqProcessor"/>
+    <process ref="CignaPlanReqProcessor" id="CignaPlanReqProcessor"/>
+    <to pattern="InOut" uri="xpathmapper://xpathmapdata" id="CignaHealthReqMapper"/>
+    <process ref="RequestTransformSaver" id="CignaTransReqSave"/>
+    <log message="Cigna output after RequestTransformSaver : ${body} "/>
+    <log message="Cigna output after RequestTransformSaver headers : ${headers} "/>
+    <unmarshal ref="Cignajsonxml" id="CignaJSONTOXML"/>
+    <log message="Cigna output after Cignajsonxml headers : ${headers} "/>
+    <process ref="XMLCharEmitter" id="CignaXMLCharEmitter"/>
+    <process ref="SOAPRequestFormatter" id="CignaSOAPRequestFormatter"/>
+    <process ref="CarrierQuoteServiceReqLogger" id="CignaQuoteLoggerProcessor"/>
+  <!--   <process ref="HealthQuoteLoggerProcessor" id="CignaQuoteLoggerProcessor2"/> -->
+  <log message="Cigna output before webservconsumer : ${body} "/>
+    <to pattern="InOut" uri="webservconsumer://invoke" id="CignaHealthQUOTEURL"/>
+    <process ref="CarrierServiceExceptionResponseHandler" id="CarrierServiceExceptionResponseHandler"/>
+    <process ref="SOAPResponseFormatter" id="CignaSOAPResponseFormatter"/>
+    <marshal ref="Cignaxmljson" id="CignaXMLTOJSON"/>
+    <log message="Cigna output after XMLJSON  : ${body} "/>
+     <process ref="CignaBasicPremiumCalculator" id="CignaBasicPremiumCalculator"/>
+    <process ref="ExternalCignaServiceRespHandler" id="CignaServiceResProcessor"/>
+    <log message="Cigna input to  2nd mapper   : ${body} "/>
+    <to pattern="InOut" uri="mapper://mapdata"/>
+    <log message="Cigna output to  2nd mapper   : ${body} "/>
+    <log message="Cigna Carrier Service Response JSON response from mapper a : ${body}"/>
+     <process ref="CignaResRiderProcessor" id="CignaResRiderProcessor"/>
+    <log message="Cigna Carrier Rider Proocessing Completed : ${body}"/>
+    <process ref="ResponseFilterProcessor" id="CignaResFilterProcessor"/>
+    <process ref="CalculateDOBMinMaxProcessor" id="HDFCMemberDOBProcessor"/>
+    <process ref="PremiumRatioCalculateProcessor" id="CIGNAPremiumRatioCalculateProcessor"/>
+    <process ref="ExternalServiceResProcessor" id="CignaServiceFinalResProcessor"/>
+    <process ref="HealthQuoteLoggerProcessor" id="CignaQuoteLoggerProcessor3"/>
+    <multicast id="CignaHealthQuoteResponseMSG">
+      <pipeline>
+        <process ref="HealthQuoteDBSender" id="CignaHealthQuoteDBSender"/>
+        <to pattern="InOnly" uri="activemqSecondary:queue:HealthQuoteResultsQ"/>
+        <process ref="HealthQuoteLoggerProcessor" id="CignaQuoteLoggerProcessor5"/>
+      </pipeline>
+      <pipeline>
+      	<process ref="CarrierQuoteServiceResLogger" id="CIGNACarrierQuoteServiceResLogger"/>
+        <process ref="MQMsgProcessor" id="CignaHlthMQMsgReqProcessor"/>
+         <!-- <wireTap uri="activemqSecondary:queue:CignaHealthResQ?includeSentJMSMessageID=true"/> -->
+        <to pattern="InOnly" uri="activemq:queue:CignaHealthResQ?timeToLive=120000&amp;includeSentJMSMessageID=true"/>
+        <process ref="HealthQuoteLoggerProcessor" id="CignaQuoteLoggerProcessor4"/>
+      </pipeline>
+    </multicast>
+  </route>
+  
+</camelContext>
+
+</blueprint>

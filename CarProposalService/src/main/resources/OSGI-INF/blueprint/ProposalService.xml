@@ -1,0 +1,168 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<blueprint xmlns="http://www.osgi.org/xmlns/blueprint/v1.0.0"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xmlns:cm="http://aries.apache.org/blueprint/xmlns/blueprint-cm/v1.1.0"
+       xmlns:cxf="http://camel.apache.org/schema/blueprint/cxf"
+       xsi:schemaLocation="
+       http://www.osgi.org/xmlns/blueprint/v1.0.0 http://www.osgi.org/xmlns/blueprint/v1.0.0/blueprint.xsd
+        http://camel.apache.org/schema/blueprint/cxf http://camel.apache.org/schema/blueprint/cxf/camel-cxf.xsd
+       http://camel.apache.org/schema/blueprint http://camel.apache.org/schema/blueprint/camel-blueprint.xsd">
+
+<cxf:rsServer id="CarProposalEndpoint" address="/carpolicyproposal" serviceClass="com.idep.proposal.service.CarProposalService" loggingFeatureEnabled="true">
+<cxf:providers>
+        <bean class="org.apache.cxf.rs.security.cors.CrossOriginResourceSharingFilter" />
+</cxf:providers>
+</cxf:rsServer>
+ 
+<bean id="CarProposalServiceImpl" class="com.idep.proposal.impl.service.CarProposalServiceImpl"/>
+<bean id="CarPolicyCreatorImpl" class="com.idep.proposal.impl.service.CarPolicyCreatorImpl"/>
+<bean id="CarProposalReqProcessor" class="com.idep.proposal.req.processor.CarProposalReqProcessor"/>
+<bean id="CarPolicyReqProcessor" class="com.idep.policy.req.processor.CarPolicyReqProcessor"/>
+<bean id="MasterPolicyReqProcessor" class="com.idep.proposal.req.processor.MasterPolicyReqProcessor"/>
+<bean id="CarPolicyResProcessor" class="com.idep.policy.res.processor.CarPolicyResProcessor"/>
+<bean id="ProposalReqDBStore" class="com.idep.proposal.data.commit.ProposalReqDBStore"/>
+<bean id="ExecutionTerminator" class="com.idep.proposal.exception.processor.ExecutionTerminator"/>
+<bean id="ProposalExceptionProcessor" class="com.idep.proposal.exception.processor.ProposalExceptionProcessor"/>
+<bean id="ProposalAddressProcessor" class="com.idep.proposal.carrier.req.processor.ProposalAddressProcessor"/>
+<bean id="UpdatePolicyStageProcessor" class="com.idep.policy.req.processor.UpdatePolicyStageProcessor"/>
+<bean id="TransformPolicyRequest" class="com.idep.policy.req.processor.TransformPolicyRequest"/>
+<bean id="JoltPolicyResProcessor" class="com.idep.policy.res.processor.JoltPolicyResProcessor"/>
+<bean id="PolicyDocumentReqQListener" class="com.idep.policy.download.PolicyDocumentReqQListener" />
+<bean id="PolicyDocumentReqProcessor" class="com.idep.policy.document.req.processor.PolicyDocumentReqProcessor" />
+<bean id="UserProfilePolicyUpdateProcessor" class="com.idep.user.profile.processor.UserProfilePolicyUpdateProcessor"/>
+<bean id="CarPolicyReqHandler" class="com.idep.policy.req.processor.CarPolicyReqHandler"/>
+<bean id="MasterProposalReqProcessor" class="com.idep.proposal.req.processor.MasterProposalReqProcessor"/>
+<bean id="CarrierProposalQListener" class="com.idep.policy.carrier.req.processor.CarrierProposalQListener"/>
+<bean id="UserProfileReqProcessor" class="com.idep.user.profile.processor.UserProfileReqProcessor"/>
+<bean id="CarPolicyDocDownloadProcessor" class="com.idep.policy.download.CarPolicyDocDownloadProcessor"/>
+<bean id="ProposalDataLoader" class="com.idep.policy.carrier.req.processor.ProposalDataLoader"/>
+<bean id="EmailTemplateLoader" class="com.idep.proposal.carrier.req.processor.EmailTemplateLoader"/>
+<bean id="CarProposalLogProcessor" class="com.idep.carrier.log.processor.CarProposalLogProcessor"/>
+<bean id="PaymentResponseValidator" class="com.idep.policy.payment.res.processor.PaymentResponseValidator"/>
+<bean id="CarPolicyResponseProcessor" class="com.idep.policy.res.processor.CarPolicyResponseProcessor"/>
+<bean id="TransformProposalRequest" class="com.idep.proposal.carrier.req.processor.TransformProposalRequest"/>
+<bean id="TransformServiceRequest" class="com.idep.proposal.req.processor.TransformServiceRequest"/>
+<bean id="UpdateStageProcessor" class="com.idep.proposal.req.processor.UpdateStageProcessor"/>
+<bean id="UpdateInspectionStageProcessor" class="com.idep.proposal.req.processor.UpdateInspectionStageProcessor"/>
+<bean id="ValidateResponse" class="com.idep.proposal.carrier.res.processor.ValidateResponse"/>
+<bean id="CreateMapperRequest" class="com.idep.proposal.carrier.res.processor.CreateMapperRequest"/>
+<bean id="MapperResponseHandler" class="com.idep.proposal.carrier.res.processor.MapperResponseHandler"/>
+<bean id="ValidatePaymentResponse" class="com.idep.policy.req.processor.ValidatePaymentResponse"/>
+<bean id="CarProposalDBReqProcessor" class="com.idep.proposal.req.processor.CarProposalDBReqProcessor"/>
+<bean id="KOTAKPolicyDocumentProcessor" class="com.idep.policy.req.processor.KOTAKPolicyDocumentProcessor"/>
+<bean id="KOTAKProposalDBUpdate" class="com.idep.policy.carrier.req.processor.KOTAKProposalDBUpdate"/>
+<bean id="KotakProposalSender" class="com.idep.policy.carrier.req.processor.KotakProposalSender"/>
+<bean id="KotakReqFormatter" class="com.idep.policy.carrier.req.processor.KotakReqFormatter"/>
+
+
+
+
+
+
+
+<cm:property-placeholder persistent-id="AMQCustomProperties"> 
+ </cm:property-placeholder> 
+
+<bean id="jmsConnectionFactory"
+   class="org.apache.activemq.ActiveMQConnectionFactory">
+   <property name="brokerURL" value="${amqbroker.carHost}:${amqbroker.carPort}" />
+   <property name="userName" value="${amqbroker.carUsername}"/>
+   <property name="password" value="${amqbroker.carPassword}"/>
+</bean>
+ 
+<bean id="pooledConnectionFactory"
+   class="org.apache.activemq.pool.PooledConnectionFactory" init-method="start" destroy-method="stop">
+   <property name="maxConnections" value="${amq.maxConnections}" />
+   <property name="connectionFactory" ref="jmsConnectionFactory" />
+</bean>
+<bean id="jmsConfig"
+   class="org.apache.camel.component.jms.JmsConfiguration">
+   <property name="connectionFactory" ref="pooledConnectionFactory"/>
+   <property name="concurrentConsumers" value="${amq.concurrentConsumers}"/>
+   <property name="mapJmsMessage" value="${amq.mapJmsMessage}" />
+   <property name="maxConcurrentConsumers" value="${amq.maxConcurrentConsumers}" />
+   <property name="asyncConsumer" value="${amq.asyncConsumer}" />
+   <property name="asyncStartListener" value="${amq.asyncStartListener}" />  
+</bean>
+ 
+ <bean id="activemq"
+    class="org.apache.activemq.camel.component.ActiveMQComponent">
+    <property name="configuration" ref="jmsConfig"/>
+    <property name="transacted" value="${amq.transacted}"/>
+    <property name="cacheLevelName" value="${amq.cacheLevelName}" />
+</bean>
+
+<bean id="jmsConnectionFactorySecondary"
+   class="org.apache.activemq.ActiveMQConnectionFactory">
+   <property name="brokerURL" value="${amqbroker.secondaryhost}:${amqbroker.secondaryport}" />
+   <property name="userName" value="${amqbroker.username}"/>
+   <property name="password" value="${amqbroker.password}"/>
+</bean>
+ 
+<bean id="pooledConnectionFactorySecondary"
+   class="org.apache.activemq.pool.PooledConnectionFactory" init-method="start" destroy-method="stop">
+  <property name="maxConnections" value="${amq.maxConnections}" /> 
+   <property name="connectionFactory" ref="jmsConnectionFactorySecondary" />
+</bean>
+<bean id="jmsConfigSecondary"
+   class="org.apache.camel.component.jms.JmsConfiguration">
+   <property name="connectionFactory" ref="pooledConnectionFactorySecondary"/>
+   <property name="concurrentConsumers" value="${amq.concurrentConsumers}"/>
+   <property name="mapJmsMessage" value="${amq.mapJmsMessage}" />
+   <property name="maxConcurrentConsumers" value="${amq.maxConcurrentConsumers}" />
+   <property name="asyncConsumer" value="${amq.asyncConsumer}" />
+   <property name="asyncStartListener" value="${amq.asyncStartListener}" />  
+</bean>
+ 
+ <bean id="activemqSecondary"
+    class="org.apache.activemq.camel.component.ActiveMQComponent">
+    <property name="configuration" ref="jmsConfigSecondary"/>
+    <property name="transacted" value="${amq.transacted}"/>
+    <property name="cacheLevelName" value="${amq.cacheLevelName}" />
+</bean>
+
+
+<camelContext streamCache="true" id="CarProposalContext" xmlns="http://camel.apache.org/schema/blueprint">
+  <route id="CarProposalRoute">
+    <from uri="cxfrs:bean:CarProposalEndpoint?continuationTimeout=90000"/>
+    <choice id="PolicyProposalDecision">
+      <when id="CarProposalReq">
+        <simple>${header.operationName} == "submitCarProposal"</simple>
+        <process ref="TransformProposalRequest" id="CarTransformProposalRequest"/>
+          <log message=" TransformProposalRequest response body : ${body}"/>
+        <choice id="ProposalStatus">
+      		  <when id="CarPolicyDateStatus">
+	      		 <simple>${header.requoteCalculationFlag} == "N"</simple>
+				      <recipientList>
+	          			  <simple>${header.carproposalService}</simple>
+	        		   </recipientList>
+        	 	</when>
+        	</choice> 
+        <bean ref="CarProposalServiceImpl" method="sendMessage" id="CarProposalResponse"/>
+      </when>
+      <when id="CarPolicyReq">
+      		<simple>${header.operationName} == "createPolicy"</simple>
+      		<process ref="ValidatePaymentResponse" id="ValidatePaymentResponse"/>
+      		<log message="ValidatePaymentResponse response body : ${body}"/>
+      		<multicast id="CarPropReq">
+				    <pipeline id="addPaymentResponseInProposal">
+				    		<process ref="ProposalReqDBStore" id="CarPolicyResDBStore" />
+					</pipeline>
+					<pipeline id="policyCreation">
+					    <log message="MasterPolicyReqProcessor request body : ${body}"/>
+      					<process ref="MasterPolicyReqProcessor" id="MasterPolicyReqProcessor"/>
+      					<when id="CarPolicyDateStatus">
+	      		 			<simple>${header.invokePolicyService} == "Y"</simple>
+							<recipientList>
+	          					<simple>${header.carPolicyService}</simple>
+	        				</recipientList>
+        				</when>
+         				<bean ref="CarProposalServiceImpl" method="sendMessage" id="CarProposalServiceImpl"/>
+         		  </pipeline>
+         	</multicast>
+      	</when>
+    </choice>
+  </route>
+</camelContext>
+</blueprint>
+

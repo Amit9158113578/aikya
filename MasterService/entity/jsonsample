@@ -1,0 +1,51 @@
+1. validateLogin
+
+input :
+
+{
+"header":{"deviceid":"asdfg",
+		  "transactionName":"validateLogin"
+	     },
+
+
+"body":  {"username":"SANDEEP",
+	      "password":"SANDEEP"
+	     }   
+}
+
+output :
+
+
+
+2. registerUser
+
+input :
+
+{
+"header":{"deviceid":"asdfg",
+		  "transactionName":"registerUser"
+	     },
+
+
+"body":{"username":"SANDEEP",
+	   "password":"SANDEEP"
+	   }   
+}
+
+output :
+
+
+3. userExist
+
+input :
+
+{
+   "header":
+            {"deviceid":"asdfg",
+		     "transactionName":"userExist"
+		     },
+		     
+   "body":{"username":"SANDEEP"}   
+}
+
+output :

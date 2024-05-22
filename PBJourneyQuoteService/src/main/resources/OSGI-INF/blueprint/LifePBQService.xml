@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<blueprint xmlns="http://www.osgi.org/xmlns/blueprint/v1.0.0"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xmlns:cxf="http://camel.apache.org/schema/blueprint/cxf"
+       xmlns:cm="http://aries.apache.org/blueprint/xmlns/blueprint-cm/v1.1.0"
+       xsi:schemaLocation="
+       http://www.osgi.org/xmlns/blueprint/v1.0.0 http://www.osgi.org/xmlns/blueprint/v1.0.0/blueprint.xsd
+        http://camel.apache.org/schema/blueprint/cxf http://camel.apache.org/schema/blueprint/cxf/camel-cxf.xsd
+       http://camel.apache.org/schema/blueprint http://camel.apache.org/schema/blueprint/camel-blueprint.xsd">
+
+  <camelContext threadNamePattern="PBLIFEThread:#counter#" id="PBLifeQuoteCalculator" xmlns="http://camel.apache.org/schema/blueprint">
+  <threadPoolProfile poolSize="50" maxPoolSize="100" maxQueueSize="1000" customId="true" id="PBQreqPool"/>
+  <route id="PBQCalculatorRoute">
+
+     <from uri="activemq:queue:PBQLifeRequestQ" id="LifeQuoteCommonReqQ">
+      <description/>
+    </from>
+   <bean ref="PBQuoteListener" method="onMessage" id="PBLifeQuoteReqBean"/>
+    <process ref="LifeRequestProcessor" id="RequestProcessorLife"/>
+    <log message="PBQ request sending to mapper for generate Life Quote Request : ${body}" id="PBQLifeReq"/>
+     <to pattern="InOut" uri="xpathmapper://xpathmapdata" id="ABHIHealthReqMapper"/>
+    <log message="PBQ request Genrated by mapper  for  Life Quote Request  Service : ${body}" id="PBQLifeRes"/>
+	<process ref="LobRequestProcessor" id="LobRequestProcessor"/>
+	<to pattern="InOut" uri="webservconsumer://invoke" id="WBCPBQREQ"/>
+    <log message="PBQ  Life Quote Request  Service Respose : ${body}" id="PBQLifeServRes"/>
+      <process ref="PBQuoteResponseProcessor" id="PBCarQuoteResponseProcessor"/>
+       <multicast id="PBCarQuoteResponseMSG"  parallelProcessing="true">
+       <pipeline>
+        		<log message="PBQ life quote carrier service response ${body}"/>
+				<wireTap uri="activemqSecondary:queue:PBQLifeResponseQ?includeSentJMSMessageID=true"/>
+	      		 <to pattern="InOnly" uri="activemq:queue:PBQLifeResponseQ?timeToLive=120000&amp;includeSentJMSMessageID=true"/>
+     	</pipeline>
+	      <pipeline>
+	      	     <process ref="PBQuoteDBSender" id="PBQuoteDBSender"/>      
+	      </pipeline>
+    </multicast>
+    </route>
+    </camelContext>
+</blueprint>

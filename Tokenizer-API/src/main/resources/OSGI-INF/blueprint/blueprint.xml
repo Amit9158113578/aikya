@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<blueprint xmlns="http://www.osgi.org/xmlns/blueprint/v1.0.0"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xmlns:camel="http://camel.apache.org/schema/blueprint"
+       xmlns:cxf="http://camel.apache.org/schema/blueprint/cxf"
+       xsi:schemaLocation=" 
+       http://www.osgi.org/xmlns/blueprint/v1.0.0 http://www.osgi.org/xmlns/blueprint/v1.0.0/blueprint.xsd
+       http://camel.apache.org/schema/blueprint/cxf http://camel.apache.org/schema/blueprint/cxf/camel-cxf.xsd
+       http://camel.apache.org/schema/blueprint http://camel.apache.org/schema/blueprint/camel-blueprint.xsd">
+ 
+<cxf:rsServer id="tokenizerEndPoint" address="/tokenizer" serviceClass="com.idep.service.TokenizerService" loggingFeatureEnabled="true" >
+<cxf:providers>
+        <bean class="org.apache.cxf.rs.security.cors.CrossOriginResourceSharingFilter" />
+ </cxf:providers>
+ </cxf:rsServer>
+ 
+ <bean id="TokenizerImpl" class="com.idep.impl.TokenizerImpl"/>
+   <bean id="ValidateId" class="com.idep.Tokenizer.API.ValidateId"/>
+ 
+ 
+  <camelContext xmlns="http://camel.apache.org/schema/blueprint">
+  <route id="TokenizerServiceRoute">
+    <from uri="cxfrs:bean:tokenizerEndPoint" id="tokenizerEndPoint">
+      <description/>
+    </from>
+    <choice id="token">
+      <when id="getToken">
+        <simple>${header.operationName} == "getToken"</simple>
+        <bean ref="ValidateId" method="validateId" id="validateIdForToken"/>
+        <bean ref="TokenizerImpl" method="getToken" id="getToken"/>
+      </when>
+      <when id="validateToken">
+        <simple>${header.operationName} == "validateToken"</simple>
+        <bean ref="TokenizerImpl" method="validateToken" id="validateToken"/>
+      </when>
+    </choice>
+    <!-- <marshal>
+      <json prettyPrint="true" library="Jackson"/>
+    </marshal> -->
+  </route>
+</camelContext>
+
+</blueprint>

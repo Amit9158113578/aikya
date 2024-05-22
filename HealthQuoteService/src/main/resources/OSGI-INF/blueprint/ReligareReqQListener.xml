@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<blueprint xmlns="http://www.osgi.org/xmlns/blueprint/v1.0.0"
+       xmlns:camel="http://camel.apache.org/schema/blueprint"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xsi:schemaLocation="http://www.osgi.org/xmlns/blueprint/v1.0.0 http://www.osgi.org/xmlns/blueprint/v1.0.0/blueprint.xsd
+       http://camel.apache.org/schema/blueprint http://camel.apache.org/schema/blueprint/camel-blueprint.xsd">
+
+<camelContext threadNamePattern="RELQUOTEREQ" id="ReligareHealthReqQContext" xmlns="http://camel.apache.org/schema/blueprint">
+  <onException>
+    <exception>java.net.ConnectException</exception>
+    <handled>
+      <constant>true</constant>
+    </handled>
+    <log message="Religare service not responded within stipulated time frame"/>
+    <process ref="ExceptionMQMSGProcessor" customId="true" id="ReligareExceptionMQMSGProcessor"/>
+    <to pattern="InOnly" uri="activemq:queue:ReligareHealthResQ?timeToLive=120000&amp;includeSentJMSMessageID=true"/>
+  </onException>
+  <onException>
+    <exception>com.idep.healthquote.exception.processor.ExecutionTerminator</exception>
+    <exception>java.lang.Exception</exception>
+    <handled>
+      <constant>true</constant>
+    </handled>
+    <log message="Religare service Execution terminated"/>
+    <process ref="ExceptionMQMSGProcessor" customId="true" id="ReligareExceptionMQMSGProcessor"/>
+    <to pattern="InOnly" uri="activemq:queue:ReligareHealthResQ?timeToLive=120000&amp;includeSentJMSMessageID=true"/>
+  </onException>
+  <route id="ReligareHealthReqQListener">
+    <from uri="activemq:queue:ReligareHealthReqQ" id="FromReligareHealthReqQ">
+      <description/>
+    </from>
+    <bean ref="P365HealthReqQListener" method="onMessage" id="ReligareHealthReqQBean"/>
+    <process ref="HealthRequestQProcessor" id="ReligareHealthReqQProcessor"/>
+    <process ref="HealthQuoteLoggerProcessor" id="ReligareHealthServLoggerProcessor1"/>
+    <process ref="HealthDroolReqServiceTaxProcessor" id="ReligareHealthReqServiceTaxQProcessor"/>
+    <process ref="HealthDroolSelfAgeProcessor" id="HDFCHealthDroolSelfAgeProcessor"/>
+    <process ref="DroolReqFormProcessor" id="ReligareDroolReqProcessor"/>
+    
+    <log message="Religare HealthQuote : quoteURL : ${header.quoteURL}  header quoteType ${header.quoteType} : message body :${body}  "/>
+    <recipientList>
+      <simple>${header.quoteURL}</simple>
+    </recipientList>
+    <log message=" Religare Health Quote drool response processed"/>
+    <bean ref="HealthQuoteResponse" method="sendQuoteResponse"/>
+    <process ref="DroolResponseFormProcessor" id="ReligareDroolResFormProcessor"/>
+    <process ref="DroolQuoteResRiderProcessor" id="ReligareDroolQuoteResRiderProcessor"/>
+    <process ref="CalculateDOBMinMaxProcessor" id="ReligareMemberDOBProcessor"/>
+    <process ref="PremiumRatioCalculateProcessor" id="RELIGPremiumRatioCalculateProcessor"/>
+    <process ref="HealthQuoteResponseProcessor" id="ReligareQuoteResponseProcessor"/>
+    <process ref="HealthQuoteLoggerProcessor" id="ReligareHealthServLoggerProcessor2"/>
+    <multicast id="ReligareHealthQuoteResponseMSG">
+      <pipeline>
+        <log message="request/response sent to save Religare quote in database"/>
+        <process ref="HealthQuoteDBSender" id="ReligareHealthQuoteDBSender"/>
+        <to pattern="InOnly" uri="activemqSecondary:queue:HealthQuoteResultsQ" id="ReligareResultsQ"/>
+        <process ref="HealthQuoteLoggerProcessor" id="ReligareHealthServLoggerProcessor3"/>
+      </pipeline>
+      <pipeline>
+      <process ref="CarrierQuoteServiceResLogger" id="ReligareQuoteHealthServiceResLogger"/>
+     	<process ref="MQMsgProcessor" id="ReligareMQMsgReqProcessor"/>
+     	<!-- <wireTap uri="activemqSecondary:queue:ReligareHealthResQ?includeSentJMSMessageID=true"/> -->
+    	<to pattern="InOnly" uri="activemq:queue:ReligareHealthResQ?timeToLive=120000&amp;includeSentJMSMessageID=true"/>
+    	<process ref="HealthQuoteLoggerProcessor" id="ReligareHealthServLoggerProcessor4"/>
+    </pipeline>
+    </multicast>
+    
+    
+    
+  </route>
+</camelContext>
+
+</blueprint>

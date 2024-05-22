@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<blueprint xmlns="http://www.osgi.org/xmlns/blueprint/v1.0.0"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xmlns:camel="http://camel.apache.org/schema/blueprint"
+       xmlns:cxf="http://camel.apache.org/schema/blueprint/cxf"
+       xsi:schemaLocation="
+       http://www.osgi.org/xmlns/blueprint/v1.0.0 http://www.osgi.org/xmlns/blueprint/v1.0.0/blueprint.xsd
+       http://camel.apache.org/schema/blueprint/cxf http://camel.apache.org/schema/blueprint/cxf/camel-cxf.xsd
+       http://camel.apache.org/schema/blueprint http://camel.apache.org/schema/blueprint/camel-blueprint.xsd">
+
+<cxf:rsServer id="dataEndpoint" address="/dataservice" serviceClass="com.idep.data.access.DataAccessor" loggingFeatureEnabled="true" >
+<cxf:providers>
+        <bean class="org.apache.cxf.rs.security.cors.CrossOriginResourceSharingFilter" />
+ </cxf:providers>
+ </cxf:rsServer>
+ 
+<bean id="DataReaderImpl" class="com.idep.data.service.impl.DataReader"/>
+<bean id="DataWriterImpl" class="com.idep.data.service.impl.DataWriter"/>
+<bean id="DataMaster" class="com.idep.data.service.impl.DataMaster"/>
+<bean id="IDVRangeImpl" class="com.idep.data.service.impl.IDVRangeImpl"/>
+<bean id="DataWriterAdminAppImpl" class="com.idep.data.service.impl.DataWriterAdminApp"/>
+<bean id="ProductPlanRidersImpl" class="com.idep.data.service.impl.ProductPlanRidersImpl"/>
+<bean id="DataReaderAdminAppImpl" class="com.idep.data.service.impl.DataReaderAdminApp"/>
+<bean id="ProductDataReader" class="com.idep.data.service.impl.ProductDataReader"/>
+<bean id="PolicyTransDataReader" class="com.idep.data.service.impl.PolicyTransDataReader"/>
+<bean id="PopularRTOProvider" class="com.idep.data.service.impl.PopularRTOProvider"/>
+<bean id="QuoteDataReader" class="com.idep.data.service.impl.QuoteDataReader"/>
+
+<!--
+       Reduces the graceful shutdown time from 300 to 30 seconds.
+-->
+<bean id="shutdownStrategy" class="org.apache.camel.impl.DefaultShutdownStrategy">
+        <property name="timeout" value="30"/>
+</bean>
+
+<camelContext id="DataAccessorContext" xmlns="http://camel.apache.org/schema/blueprint">
+  <route>
+    <from uri="cxfrs:bean:dataEndpoint"/>
+    <log message="${header.operationName}"/>
+    <choice>
+      <when>
+        <simple>${header.operationName} == "readProductData"</simple>
+        <bean ref="ProductDataReader" method="readProductData"/>
+      </when>
+      <when>
+        <simple>${header.operationName} == "getProductPlanRiders"</simple>
+        <bean ref="ProductPlanRidersImpl" method="getProductPlanRiders"/>
+      </when>
+      <when>
+        <simple>${header.operationName} == "readCouchDB"</simple>
+        <bean ref="DataReaderImpl" method="readCouchDB"/>
+      </when>
+      <when>
+        <simple>${header.operationName} == "writeCouchDB"</simple>
+        <bean ref="DataWriterImpl" method="writeCouchDB"/>
+      </when>
+      <when>
+        <simple>${header.operationName} == "writeAdminAppDB"</simple>
+        <bean ref="DataWriterAdminAppImpl" method="writeAdminAppDB"/>
+      </when>
+      <when>
+        <simple>${header.operationName} == "readAdminAppDB"</simple>
+        <bean ref="DataReaderAdminAppImpl" method="readAdminAppDB"/>
+      </when>
+      <when>
+        <simple>${header.operationName} == "getIDVRange"</simple>
+        <bean ref="IDVRangeImpl" method="getIDVDetails"/>
+      </when>
+      <when>
+        <simple>${header.operationName} == "readPolicyTransData"</simple>
+        <bean ref="PolicyTransDataReader" method="readPolicyTransData"/>
+      </when>
+      <when>
+        <simple>${header.operationName} == "readQuoteData"</simple>
+        <bean ref="QuoteDataReader" method="readQuoteData"/>
+      </when>
+      <when>
+        <simple>${header.operationName} == "getPopularRTO"</simple>
+        <bean ref="PopularRTOProvider" method="getPopularRTO"/>
+      </when>
+      <when>
+        <simple>${header.operationName} == "couchDBOperation"</simple>
+        <bean ref="DataMaster" method="couchDBOperation"/>
+      </when>
+    </choice>
+    <marshal>
+      <json prettyPrint="true" library="Jackson"/>
+    </marshal>
+  </route>
+</camelContext>
+
+</blueprint>

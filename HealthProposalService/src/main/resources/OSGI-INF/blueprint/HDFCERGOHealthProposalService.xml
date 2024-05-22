@@ -1,0 +1,247 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<blueprint xmlns="http://www.osgi.org/xmlns/blueprint/v1.0.0"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:cxf="http://camel.apache.org/schema/blueprint/cxf"
+	xsi:schemaLocation="
+       http://www.osgi.org/xmlns/blueprint/v1.0.0 http://www.osgi.org/xmlns/blueprint/v1.0.0/blueprint.xsd
+        http://camel.apache.org/schema/blueprint/cxf http://camel.apache.org/schema/blueprint/cxf/camel-cxf.xsd
+       http://camel.apache.org/schema/blueprint http://camel.apache.org/schema/blueprint/camel-blueprint.xsd">
+
+	<cxf:rsServer id="HDFCErgoHealthProposalEndpoint" address="/hdfcergohealthproposalservice"
+		serviceClass="com.idep.proposal.service.ProposalSubmitService"
+		loggingFeatureEnabled="true">
+		<cxf:providers>
+			<bean
+				class="org.apache.cxf.rs.security.cors.CrossOriginResourceSharingFilter" />
+		</cxf:providers>
+	</cxf:rsServer>
+
+	<bean id="HDFCErgoHealthProposalhutdownStrategy" class="org.apache.camel.impl.DefaultShutdownStrategy">
+		<property name="timeout" value="30" />
+	</bean>
+
+	<camelContext streamCache="true" threadNamePattern="HLTHPROPHDFCERGO"
+		id="HDFCErgoHealthProposalContext" xmlns="http://camel.apache.org/schema/blueprint">
+		<dataFormats>
+			<xmljson forceTopLevelObject="true" skipWhitespace="true"
+				trimSpaces="true" skipNamespaces="true" removeNamespacePrefixes="true"
+				id="jsontoxml" />
+				<xmljson forceTopLevelObject="true" skipNamespaces="true" removeNamespacePrefixes="true" id="xmltojson" />
+				
+		</dataFormats>
+		<onException>
+			<exception>java.net.SocketTimeoutException</exception>
+			<exception>java.net.SocketException</exception>
+			<handled>
+				<constant>true</constant>
+			</handled>
+			<log message="HDFCErgo Health proposal service seems to be down" />
+			<process ref="ProposalExceptionProcessor" customId="true"
+				id="HDFCErgoHealthPropExcepProcessor" />
+		</onException>
+		<onException>
+			<exception>com.idep.policy.exception.processor.ExecutionTerminator</exception>
+			<exception>java.lang.Exception</exception>
+			<handled>
+				<constant>true</constant>
+			</handled>
+			<log message="HDFC Ergo Health proposal service Exception occure" />
+			<process ref="ProposalExceptionProcessor" customId="true"
+				id="HDFCHealthPropExcepProcessor" />
+		</onException>
+		<route id="HDFCErgoProposalSubmitterRoute">
+			<from uri="cxfrs:bean:HDFCErgoHealthProposalEndpoint" />
+			<choice id="HDFCErgoHealthPolicyProposalDecision">
+				<when id="HDFCErgoHealthProposalReq">
+					<simple>${header.operationName} == "submitHealthProposal"</simple>
+					<bean ref="ProposalSubmitServiceImpl" method="submitProposal"
+						id="HDFCErgoHealthProposalSubmit" />
+					<process ref="ProposalReqProcessor" id="HDFCErgoHealthProposalReqProcessor" />
+					<process ref="HealthProposalReqLogProcessor" id="HDFCErgoHealthProReqLogProcessor" />
+					<process ref="HealthPolicyLogProcessor" id="HDFCHealthLogProcessor1" />
+					<!-- <when id="baseEnvStatusTrue">
+						<simple>${header.baseEnvStatus} == "true"</simple>
+						<log message="Base env status true" />
+						<to uri="direct:proposalCreateRequest" />
+					</when>
+					<when id="baseEnvStatusFalse">
+						<simple>${header.baseEnvStatus} == "false"</simple>
+						<log message="Base env status false" />-->
+						<multicast id="ProposalMessageSender">
+							<pipeline id="ProposalQMessage">
+								<to uri="direct:proposalCreateRequest" />
+							</pipeline>
+							<pipeline> 
+								<process ref="HealthPorposalPlanTypeProcessor" id="HDFCErgoPlanTypeProcessor" />
+								<process ref="CarrierCityLoader" id="HDFCCarrierCityLoader" />
+								<process ref="HDFCErgoInsuredmemberProcessor" id="HDFCErgoHealthmemberProcessor" />
+								<process ref="ProposalAddressProcessor" id="HDFCErgoHealthAddressProcessor" />
+								<log message="after ProposalAddressProcessor : ${body}" />
+								<process ref="HealthPolicyLogProcessor" id="HDFCHealthLogProcessor2" />
+								<process ref="ConfigurationLoaderProcessor" id="ConfigLoaderProcessor" />
+								<log message="after ConfigurationLoaderProcessor body : ${body} "/>
+								<to pattern="InOut"	uri="joltTransformer://invoke" />
+								<log message="after joltTransformer body : ${body} "/>
+								<process ref="RequestValidator" id="RequestValidator" />
+								<log message="after RequestValidator body : ${body} "/>
+								<unmarshal ref="jsontoxml" id="SOAPjsontoxml"/>
+								<log message="after jsontoxml body : ${body} "/>
+								<process ref="HDFCSOAPRequestFormatter" id="RequestFormatter" />
+								<log message="after HDFCSOAPRequestFormatter body : ${body} "/>
+								<process ref="InvokeCarrierProcessor" id="InvokeCarrierProcessor" />
+								<log message="after InvokeCarrierProcessor body : ${body} "/>
+								<process ref="HDFCCarrierServiceResponseHnadler" id="HDFCCarrierServiceResponseHnadler"/>
+							    <log message=" response after HDFCCarrierServiceResponseHnadler : ${body} "/>
+							    <marshal ref="xmltojson" id="hdfcxmltojson"/>
+								<log message=" response after converting to json : ${body} "/>
+								<process ref="HDFCQuoteResProcessor" id="HDFCQuoteResProcessor"/>
+							    <to pattern="InOut"	uri="joltTransformer://invoke" />
+								<log message="after joltTransformer body : ${body} "/>
+		
+		
+								<process ref="ConfigurationLoaderProcessor" id="ConfigLoaderProcessor" />
+								<log message="after ConfigurationLoaderProcessor body : ${body} "/>
+								<to pattern="InOut"	uri="joltTransformer://invoke" />
+								<log message="after joltTransformer body : ${body} "/>
+								<process ref="RequestValidator" id="RequestValidator" />
+								<log message="after RequestValidator body : ${body} "/>
+								<unmarshal ref="jsontoxml" id="SOAPjsontoxml"/>
+								<log message="after jsontoxml body : ${body} "/>	
+								<process ref="HDFCSOAPRequestFormatter" id="RequestFormatter" />
+								<log message="after HDFCSOAPRequestFormatter body : ${body} "/>
+								<process ref="InvokeCarrierProcessor" id="InvokeCarrierProcessor" />
+								<log message="after InvokeCarrierProcessor body : ${body} "/>	
+								<process ref="HDFCCarrierServiceResponseHnadler" id="HDFCCarrierServiceResponseHnadler"/>
+							    <log message=" response after HDFCCarrierServiceResponseHnadler : ${body} "/>
+							    <marshal ref="xmltojson" id="hdfcxmltojson"/>
+								<log message=" response after converting to json : ${body} "/>
+								<process ref="HDFCQuoteResProcessor" id="HDFCQuoteResProcessor"/>
+							    <to pattern="InOut"	uri="joltTransformer://invoke" />
+								<log message="after joltTransformer body : ${body} "/>	
+									
+								<process ref="HDFCHealthProposalResponseValidator" id="HDFCProposalResponseValidator" />
+								<choice id="HDFCHealthCarrierProposalResp">
+									<when id="HDFCHealthProposalSuccessResp">
+										<simple>${header.reqFlag} == "True"</simple>
+											<process ref="HealthProposalServiceResLogProcessor" id="HDFCHealthProposalResLogProcessor" />
+											<process ref="ProposalReqDBStore" id="HDFCErgoHealthProposalReqDBStore" />
+											<process ref="HealthPolicyLogProcessor" id="HDFCHealthLogProcessor3" />
+											<bean ref="ProposalSubmitServiceImpl" method="submitProposal"
+												id="HDFCErgoHealthProposalResponse" />
+											<marshal>
+												<json prettyPrint="true" library="Jackson" />
+											</marshal>
+								</when>
+								<when id="HDFCHealthProposalFailureResp">
+									<simple>${header.reqFlag} == "False"</simple>
+										<log message="HDFC Error response received " />
+										<bean ref="ProposalSubmitServiceImpl" method="submitProposal" id="HDFCHealthProposalResponse"/>
+								</when>
+							</choice>	
+							 </pipeline>
+						</multicast>
+					<!--</when> -->
+				</when>
+				<when id="HDFCErgoHealthPolicyCreator">
+					<simple>${header.operationName} == "createPolicy"</simple>
+					<log message="HDFC Ergo Health : createPolicy request received" />
+					<bean ref="PolicySubmitServiceImpl" method="submitPolicy"
+						id="HDFCHealthPolicyServiceRequest" />
+					<process ref="HealthPolicyLogProcessor" id="HDFCHealthPolicyLogProcessor" />
+					<multicast>
+						<pipeline>
+							<process ref="PaymentResponseUpdateProcessor" id="HDFCHealthPaymentResProcessor" />
+							<process ref="ProposalReqDBStore" id="ReligareHealthPolicyResDBStore" />
+							<log message="Payment response added in database for HDFC Ergo Health " />
+						</pipeline>
+						<pipeline>
+							<process ref="PaymentResponseValidator" id="HDFCHealthPaymentResValidator" />
+							<choice id="HDFCPaymentResponse">
+						      <when id="HDFCPaymentResponseReq">
+							    <simple>${header.reqFlag} == "True"</simple>
+							    <process ref="PolicyConfigurationLoaderProcessor" id="PolicyConfigLoaderProcessor" />
+							    <log message="after PolicyConfigurationLoaderProcessor body : ${body} "/>
+								<to pattern="InOut"	uri="joltTransformer://invoke" />
+								<process ref="RequestValidator" id="RequestValidator" />
+								<log message="after RequestValidator body : ${body} "/>
+								<unmarshal ref="jsontoxml" id="SOAPjsontoxml"/>
+								<log message="after jsontoxml body : ${body} "/>
+								<process ref="HDFCPolicySOAPRequestFormatter" id="RequestFormatter" />
+								<log message="after HDFCPolicySOAPRequestFormatter body : ${body} "/>
+								<process ref="InvokeCarrierProcessor" id="InvokeCarrierProcessor" />
+								<log message="after InvokeCarrierProcessor body : ${body} "/>	
+								<process ref="HDFCCarrierServiceResponseHnadler" id="HDFCCarrierServiceResponseHnadler"/>
+							    <log message=" response after HDFCCarrierServiceResponseHnadler : ${body} "/>
+							    <marshal ref="xmltojson" id="hdfcxmltojson"/>
+								<log message="policy response after converting to json : ${body} "/>
+								<process ref="HDFCPolicyResProcessor" id="HDFCQuoteResProcessor"/>
+							    <to pattern="InOut"	uri="joltTransformer://invoke" />
+								<log message="after joltTransformer body : ${body} "/>	
+								
+							<process ref="HealthPolicyReqProcessor" id="HDFCHealthPolicyReqProcessor" />
+							<process ref="HDFCUWResponseProcessor" id="HDFCErgoResUWHandler" />
+							<process ref="HealthPolicyLogProcessor" id="HDFCHealthLogProcessor4" />
+							<to pattern="InOut" uri="mapper://mapdata" id="HDFCPolicyReqMapper" />
+							<log message="after MAPPER body : ${body} "/>	
+							<process ref="HealthPolicyReqHandler" id="HDFCHealthPolicyReqHandler" />
+							<process ref="ProposalReqDBStore" id="HDFCErgoHealthProposalReqDBStore" />
+							<process ref="HealthPolicyResHandler" id="HDFCHealthPolicyResHandler" />
+							<when id="HDFCProposalUPDTError">
+								<simple>${header.policyCase} == "NSTP"</simple>
+								<log message ="sending flow to NSTPPolicyDocDownload"></log>
+								<to pattern="InOnly" uri="activemq:queue:NSTPPolicyDocDownload" />
+							</when>
+							<log message ="carrying normal flow"></log>
+							<to pattern="InOut" uri="mapper://mapdata" id="HDFCPolicyResMapperUI" />
+							<multicast>
+								<pipeline>
+									<process ref="HealthPolicyReqHandler" id="HDFCHealthPolicyRes" />
+									<process ref="UserProfileReqProcessor" id="HDFChealthUserProfileReqProcessor" />
+								</pipeline>
+								<pipeline>
+									<process ref="HealthPolicyResLogProcessor" id="HDFCHealthPolicyResLogProcessor" />
+									<process ref="HealthPolicyLogProcessor" id="HDFCHealthLogProcessor5" />
+									<process ref="HealthPolicyReqHandler" id="HDFCErgoHealthPolicyResHandler" />
+									<process ref="HealthPolicyResProcessor" id="HDFCErgoHealthPolicyResProcessor" />
+									<bean ref="PolicySubmitServiceImpl" method="sendMessage"
+										id="HDFCHealthPolicyServiceResponse" />
+									<!-- <marshal> <json prettyPrint="true" library="Jackson"/> </marshal> -->
+								</pipeline>
+							</multicast>
+							</when>
+							   <when id="HDFCProposalUPDTError">
+									<simple>${header.reqFlag} == "False"</simple>
+									<log message="HDFC payment error " />
+									<bean ref="PolicySubmitServiceImpl" method="sendMessage" />
+							</when>
+						   </choice>
+						</pipeline>
+					</multicast>
+				</when>
+			</choice>
+		</route>
+			<route id="createProposalRoute">
+			<from uri="direct:proposalCreateRequest" />
+			<process ref="HealthProposalDBReqProcessor" id="HDFCErgoHealthProposalDBReqProcessorBASE" />
+			<to pattern="InOut" uri="xpathmapper://xpathmapdata" id="HDFCErgoHealthMapperBASE" />
+			<process ref="HealthPolicyLogProcessor" id="HDFCHealthLogProcessor6" />
+			<process ref="ProposalReqDBStore" id="HDFCErgoHealthProposalReqDBStoreBASE" />
+			<process ref="ProposalResProcessor" id="HDFCErgoHealthProposalResProcessorBASE" />
+			<bean ref="ProposalSubmitServiceImpl" method="submitProposal"
+				id="HDFCErgoHealthProposalResponseBASE" />
+			<marshal>
+				<json prettyPrint="true" library="Jackson" />
+			</marshal>
+		</route>  
+		
+		 <route id="NSTPPolicyDocDownload">
+		<from uri="activemq:queue:NSTPPolicyDocDownload" id="policyDocDownloadRoute">
+			<description />
+		 </from>
+		        <bean ref="PolicyDocumentReqQListener" method="onMessage" id="PolicyReqQListener" />
+				<log message="request for create policy document for kotak : ${body}" />
+				<process ref="PolicyDocJasperProcessor" id="PolicyDocJasperProcessor" />
+
+	</route>
+	</camelContext>
+
+</blueprint>

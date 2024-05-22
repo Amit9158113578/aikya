@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<blueprint xmlns="http://www.osgi.org/xmlns/blueprint/v1.0.0"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:cxf="http://camel.apache.org/schema/blueprint/cxf"
+	xsi:schemaLocation="
+       http://www.osgi.org/xmlns/blueprint/v1.0.0 http://www.osgi.org/xmlns/blueprint/v1.0.0/blueprint.xsd
+        http://camel.apache.org/schema/blueprint/cxf http://camel.apache.org/schema/blueprint/cxf/camel-cxf.xsd
+       http://camel.apache.org/schema/blueprint http://camel.apache.org/schema/blueprint/camel-blueprint.xsd">
+	<camelContext threadNamePattern="BhartiAxaTravelThread:#counter#"
+		id="BhartiAxaTravelReqQContext" xmlns="http://camel.apache.org/schema/blueprint">
+	<dataFormats>
+   	 	<xmljson forceTopLevelObject="true" skipWhitespace="true" trimSpaces="true" skipNamespaces="true" removeNamespacePrefixes="true" expandableProperties="Member" id="BhartiAxajsonxml"/>
+    	<xmljson forceTopLevelObject="true" skipWhitespace="true" trimSpaces="true" skipNamespaces="true" removeNamespacePrefixes="true" id="BhartiAxaxmljson"/>
+    </dataFormats>
+    <onException>
+			<exception>java.net.ConnectException</exception>
+			<exception>java.net.SocketTimeoutException</exception>
+			<exception>java.net.SocketException</exception>
+			<handled>
+				<constant>true</constant>
+			</handled>
+			<log message="Bharti Axa TRAVEL quote service seems to be down or not responded within stipulated time frame" />
+			<process ref="ExceptionMQMSGProcessor" customId="true"
+				id="BhartiAxaTravelExceptionMQMSGProcessor" />
+			<to pattern="InOnly"
+				uri="activemq:queue:BhartiAxaTravelResQ?timeToLive=120000&amp;includeSentJMSMessageID=true" />
+		</onException>
+	<onException>
+			<exception>org.apache.camel.component.http4.HttpOperationFailedException</exception>
+			<handled>
+				<constant>true</constant>
+			</handled>
+			<log message="BhartiAxa TRAVEL quote service HttpOperationFailed : check input values provided " />
+			<process ref="ExceptionMQMSGProcessor" customId="true" id="BhartiAxaTravelHTTPExcpMQProcessor" />
+			<to pattern="InOnly" uri="activemq:queue:BhartiAxaTravelResQ?timeToLive=120000&amp;includeSentJMSMessageID=true" />
+		</onException>
+	<onException>
+		    <exception>com.idep.travelquote.exception.processor.ExecutionTerminator</exception>
+		    <handled>
+		      <constant>true</constant>
+		    </handled>
+		    <log message="BhartiAxa TRAVEL quote service Terminated "/>
+		    <process ref="ExceptionMQMSGProcessor" customId="true" id="BhartiAxaTravelExceptionQuoteProcessor"/>
+		    <to pattern="InOnly" uri="activemq:queue:BhartiAxaTravelResQ?timeToLive=120000&amp;includeSentJMSMessageID=true"/>
+	  </onException>
+	  
+	 <route id="BhartiAxaTravelReqQListener">
+	 <from uri="activemq:queue:BhartiAxaTravelReqQ" id="FromBhartiAxaTravelReqQ">
+	<description/>
+	</from>
+	<log message="BhartiAxa Starting Its Qutation Formation " />
+	<bean ref="P365TravelReqQListener" method="onMessage" id="BhartiAxaTravelReqQBean"/>
+	<process ref="TravelRequestQProcessor" id="BhartiAxaTravelReqQProcessor"/>
+	<process ref="TravelQuoteLoggerProcessor" id="TravelQuoteLoggerProcessor"/>
+	<process ref="CalculateMemberCountProcessor" id="BhartiAxaMemberCountProcessor"/>
+	<process ref="BhartiAxaFamilyMemberCountCodeProcesser" id="BhartiAxaFamilyMemberCountCodeProcesser"/>
+	<process ref="TravelTravellersDobCalProcessor" id="BhartiAxaTravelTravellersDobCalProcessor"/>	
+	<process ref="TataAIGSoapReqProcessor" id="BhartiAxaSoapReqProcessor"/>
+    <to pattern="InOut" uri="xpathmapper://xpathmapdata" id="BhartiAxaTravelXPathMapper"/>
+	<process ref="RequestTransformSaver" id="BhartiAxaTransReqSave"/>
+    <unmarshal ref="BhartiAxajsonxml" id="BhartiAxaJSONTOXML"/>
+    <process ref="XMLCharEmitter" id="BhartiAxaXMLCharEmitter"/>
+    <process ref="SoapReqFormatter" id="BhartiAxaSoapReqGenerator"/>
+    <process ref="CarrierQuoteServiceReqLogger" id="CarrierQuoteServiceReqLogger"/>
+    <to pattern="InOut" uri="webservconsumer://invoke" id="BhartiAxaTravelQUOTEURL"/>
+    <process ref="BhartiAxaSoapResFormatter" id="BhartiAxaSoapResFormatter"/>
+    <marshal ref="BhartiAxaxmljson" id="BhartiAxaXMLTOJSON"/>
+    <process ref="BhartiAxaResTransformer" id="BhartiAxaResTransformer"/>
+    <process ref="ExternalTravelServiceRespHandler" id="FutureTravelServiceRespHandler"/>
+   <to pattern="InOut" uri="xpathmapper://xpathmapdata" id="BhartiAxaTravelXPathMapper"/>
+   <process ref="TravelQuoteResponseProcessor" id="TravelQuoteResponseProcessor"/>
+         <multicast id="BhartiAxaravelQuoteResponseMSG">
+          <pipeline>
+            <process ref="TravelQuoteDBSender" id="BhartiAxaQuoteDBSender"/>
+            <to pattern="InOnly" uri="activemqSecondary:queue:TravelQuoteResultsQ"/>
+          </pipeline>
+          <pipeline>
+          	<process ref="CarrierQuoteServiceResLogger" id="BhartiAxaCarrierQuoteServiceResLogger"/>
+            <process ref="TravelMQMsgProcessor" id="BhartiAxaGenrocessorErrorQ"/>
+            <!-- <wireTap uri="activemqSecondary:queue:BhartiAxaTravelResQ?includeSentJMSMessageID=true"/> -->
+            <to pattern="InOnly" uri="activemq:queue:BhartiAxaTravelResQ?timeToLive=120000&amp;includeSentJMSMessageID=true"/>
+          </pipeline>
+    </multicast>
+  </route>
+  </camelContext>
+
+</blueprint>
+	  
+	
+	

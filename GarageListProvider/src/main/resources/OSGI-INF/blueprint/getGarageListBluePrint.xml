@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<blueprint xmlns="http://www.osgi.org/xmlns/blueprint/v1.0.0"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xmlns:camel="http://camel.apache.org/schema/blueprint"
+       xmlns:cxf="http://camel.apache.org/schema/blueprint/cxf"
+       xsi:schemaLocation=" 
+       http://www.osgi.org/xmlns/blueprint/v1.0.0 http://www.osgi.org/xmlns/blueprint/v1.0.0/blueprint.xsd
+       http://camel.apache.org/schema/blueprint/cxf http://camel.apache.org/schema/blueprint/cxf/camel-cxf.xsd
+       http://camel.apache.org/schema/blueprint http://camel.apache.org/schema/blueprint/camel-blueprint.xsd">
+
+<cxf:rsServer id="garageEndPoint" address="/garageDetails" serviceClass="com.idep.garage.service.GarageListService" loggingFeatureEnabled="true" >
+<cxf:providers>
+        <bean class="org.apache.cxf.rs.security.cors.CrossOriginResourceSharingFilter" />
+ </cxf:providers>
+ </cxf:rsServer>
+ 
+  <bean id="GarageDetailsServiceImpl" class="com.idep.garage.impl.service.GarageDetailsServiceImpl"/>
+  <bean id="GarageDetailsProcessor" class="com.garage.processor.GarageDetailsProcessor"/>
+
+  <camelContext xmlns="http://camel.apache.org/schema/blueprint">
+    <route id="GarageServiceRoute">
+      <from uri="cxfrs:bean:garageEndPoint" id="garageEndPoint"/>
+      <bean ref="GarageDetailsServiceImpl" method="getGarageDetails" id="getGarageDetailsReq"/>
+      <process ref="GarageDetailsProcessor" id="GarageDetailsProcessor"/>
+       <marshal>
+        <json prettyPrint="true" library="Jackson"/>
+      </marshal>
+    </route>
+    
+  </camelContext>
+
+</blueprint>

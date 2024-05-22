@@ -1,0 +1,179 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<blueprint xmlns="http://www.osgi.org/xmlns/blueprint/v1.0.0"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xmlns:cxf="http://camel.apache.org/schema/blueprint/cxf"
+       xmlns:cm="http://aries.apache.org/blueprint/xmlns/blueprint-cm/v1.1.0"
+       xsi:schemaLocation="
+       http://www.osgi.org/xmlns/blueprint/v1.0.0 http://www.osgi.org/xmlns/blueprint/v1.0.0/blueprint.xsd
+        http://camel.apache.org/schema/blueprint/cxf http://camel.apache.org/schema/blueprint/cxf/camel-cxf.xsd
+       http://camel.apache.org/schema/blueprint http://camel.apache.org/schema/blueprint/camel-blueprint.xsd">
+ 
+<cxf:rsServer id="HealthQuoteEndpoint" address="/healthquoteservice" serviceClass="com.idep.healthquote.service.HealthQuoteCalcService" loggingFeatureEnabled="true">
+<cxf:providers>
+        <bean class="org.apache.cxf.rs.security.cors.CrossOriginResourceSharingFilter" />
+</cxf:providers>
+</cxf:rsServer>
+
+ <cm:property-placeholder persistent-id="AMQCustomProperties"> 
+ </cm:property-placeholder> 
+
+<bean id="jmsConnectionFactory"
+   class="org.apache.activemq.ActiveMQConnectionFactory">
+   <property name="brokerURL" value="${amqbroker.healthHost}:${amqbroker.healthPort}" />
+   <property name="userName" value="${amqbroker.healthUsername}"/>
+   <property name="password" value="${amqbroker.healthPassword}"/>
+</bean>
+
+<bean id="pooledConnectionFactory"
+   class="org.apache.activemq.pool.PooledConnectionFactory" init-method="start" destroy-method="stop">
+   <property name="maxConnections" value="${amq.maxConnections}" />
+   <property name="connectionFactory" ref="jmsConnectionFactory" />
+</bean>
+ 
+<bean id="jmsConfig"
+   class="org.apache.camel.component.jms.JmsConfiguration">
+   <property name="connectionFactory" ref="pooledConnectionFactory"/>
+   <property name="concurrentConsumers" value="${amq.concurrentConsumers}"/>
+   <property name="mapJmsMessage" value="${amq.mapJmsMessage}" />
+   <property name="maxConcurrentConsumers" value="${amq.maxConcurrentConsumers}" />
+   <property name="asyncConsumer" value="${amq.asyncConsumer}" />
+   <property name="asyncStartListener" value="${amq.asyncStartListener}" />
+  <!--  
+   <property name="consumer.prefetchSize" value="1" />
+   <property name="consumer.maximumPendingMessageLimit" value="0" />
+   -->
+   
+</bean>
+ 
+<bean id="activemq"
+    class="org.apache.activemq.camel.component.ActiveMQComponent">
+    <property name="configuration" ref="jmsConfig"/>
+    <property name="transacted" value="${amq.transacted}"/>
+    <property name="cacheLevelName" value="${amq.cacheLevelName}" />
+</bean>
+ <bean id="jmsConnectionFactorySecondary"
+   class="org.apache.activemq.ActiveMQConnectionFactory">
+   <property name="brokerURL" value="${amqbroker.secondaryhost}:${amqbroker.secondaryport}" />
+   <property name="userName" value="${amqbroker.username}"/>
+   <property name="password" value="${amqbroker.password}"/>
+</bean>
+ 
+<bean id="pooledConnectionFactorySecondary"
+   class="org.apache.activemq.pool.PooledConnectionFactory" init-method="start" destroy-method="stop">
+  <property name="maxConnections" value="${amq.maxConnections}" /> 
+   <property name="connectionFactory" ref="jmsConnectionFactorySecondary" />
+</bean>
+<bean id="jmsConfigSecondary"
+   class="org.apache.camel.component.jms.JmsConfiguration">
+   <property name="connectionFactory" ref="pooledConnectionFactorySecondary"/>
+   <property name="concurrentConsumers" value="${amq.concurrentConsumers}"/>
+   <property name="mapJmsMessage" value="${amq.mapJmsMessage}" />
+   <property name="maxConcurrentConsumers" value="${amq.maxConcurrentConsumers}" />
+   <property name="asyncConsumer" value="${amq.asyncConsumer}" />
+   <property name="asyncStartListener" value="${amq.asyncStartListener}" />  
+</bean>
+ 
+ <bean id="activemqSecondary"
+    class="org.apache.activemq.camel.component.ActiveMQComponent">
+    <property name="configuration" ref="jmsConfigSecondary"/>
+    <property name="transacted" value="${amq.transacted}"/>
+    <property name="cacheLevelName" value="${amq.cacheLevelName}" />
+</bean>
+
+<bean id="MQMsgProcessor" class="com.idep.healthquote.impl.service.MQMsgProcessor"/>
+<bean id="HealthQuoteCalcServiceImpl" class="com.idep.healthquote.impl.service.HealthQuoteCalcServiceImpl"/> 
+<bean id="HealthRequestProcessor" class="com.idep.healthquote.req.processor.HealthRequestProcessor" />
+<bean id="PlanHealthRequestProcessor" class="com.idep.healthquote.req.processor.PlanHealthRequestProcessor" />
+<bean id="DroolReqFormProcessor" class="com.idep.healthquote.form.req.HealthDroolReqFromProcessor" />
+<bean id="DroolResponseFormProcessor" class="com.idep.healthquote.form.req.HealthDroolResFormProcessor" />
+<bean id="HealthRequestQProcessor" class="com.idep.healthquote.req.processor.HealthRequestQProcessor" />
+<bean id="GenericResponseProcessor" class="com.idep.healthquote.res.processor.GenericResponseProcessor"/>
+<bean id="HealthQuoteResponse" class="com.idep.healthquote.response.HealthQuoteResponse"/> 
+<bean id="P365HealthReqQListener" class="com.idep.healthquote.queue.listener.P365HealthReqQListener"/>
+<bean id="ExternalServiceReqProcessor" class="com.idep.healthquote.ext.form.req.ExternalServiceReqProcessor"/>
+<bean id="ExternalServiceRespHandler" class="com.idep.healthquote.ext.form.req.ExternalServiceRespHandler"/>
+<bean id="ExternalServiceResProcessor" class="com.idep.healthquote.ext.form.req.ExternalServiceResProcessor"/>
+<bean id="MapperReqProcessor" class="com.idep.healthquote.ext.form.req.MapperReqProcessor"/>
+<bean id="ExceptionMQMSGProcessor" class="com.idep.healthquote.exception.processor.ExceptionMQMSGProcessor"/>
+<bean id="ResponseQuoteMQMSGProcessor" class="com.idep.healthquote.exception.processor.ResponseQuoteMQMSGProcessor"/>
+<bean id="ExecutionTerminator" class="com.idep.healthquote.exception.processor.ExecutionTerminator"/>
+<bean id="CarrierTransformReqCollector" class="com.idep.healthquote.ext.form.req.CarrierTransformReqCollector"/>
+<bean id="SOAPRequestFormatter" class="com.idep.healthquote.req.transformer.SOAPRequestFormatter" />
+<bean id="RequestTransformSaver" class="com.idep.healthquote.req.transformer.RequestTransformSaver" />
+<bean id="SOAPResponseFormatter" class="com.idep.healthquote.res.transformer.SOAPResponseFormatter" />
+<bean id="HealthQuoteDBSender" class="com.idep.healthquote.req.processor.HealthQuoteDBSender"/> 
+<bean id="ExternalCignaServiceRespHandler" class="com.idep.healthquote.ext.form.req.ExternalCignaServiceRespHandler"/> 
+<bean id="XMLCharEmitter" class="com.idep.healthquote.req.transformer.XMLCharEmitter"/>
+<bean id="CignaSumInsuredReqProcessor" class="com.idep.healthquote.form.req.CignaSumInsuredReqProcessor"/>
+<bean id="CignaPlanReqProcessor" class="com.idep.healthquote.form.req.CignaPlanReqProcessor"/>
+<bean id="DroolQuoteResRiderProcessor" class="com.idep.healthquote.res.processor.DroolQuoteResRiderProcessor"/>
+<bean id="HealthQuoteResponseProcessor" class="com.idep.healthquote.res.processor.HealthQuoteResponseProcessor"/>
+<bean id="HealthDroolReqServiceTaxProcessor" class="com.idep.healthquote.form.req.HealthDroolReqServiceTaxProcessor"/>
+<bean id="ProductComponentsProcessor" class="com.idep.healthquote.carrier.req.processor.ProductComponentsProcessor"/>
+<bean id="CarrierServiceResponseHnadler" class="com.idep.healthquote.ext.form.req.CarrierServiceResponseHnadler"/>
+<bean id="AdityaBirlaInsuredListProcessor" class="com.idep.healthquote.carrier.req.processor.AdityaBirlaInsuredListProcessor"/>
+<bean id="CignaInputReqProcessor" class="com.idep.healthquote.form.req.CignaInputReqProcessor"/>
+<bean id="HealthReqQValidatorProcessor" class="com.idep.healthquote.req.processor.HealthReqQValidatorProcessor"/>
+<bean id="CarrierDataLoader" class="com.idep.healthquote.carrier.req.processor.CarrierDataLoader"/>
+<bean id="FutureGeneraliSOAPReqProcessor" class="com.idep.healthquote.form.req.FutureGeneraliSOAPReqProcessor"/>
+<bean id="ABHIMemberCodeProcessor" class="com.idep.healthquote.carrier.req.processor.ABHIMemberCodeProcessor"/>
+<bean id="HealthDroolSelfAgeProcessor" class="com.idep.healthquote.form.req.HealthDroolSelfAgeProcessor"/>
+<bean id="IffcoTokioInputReqProcessor" class="com.idep.healthquote.carrier.req.processor.IffcoTokioInputReqProcessor"/>
+<bean id="IffcoSOAPRequestFormatter" class="com.idep.healthquote.req.transformer.IffcoSOAPRequestFormatter"/>
+<bean id="ABHIQuoteResProcessor" class="com.idep.healthquote.carrier.req.processor.ABHIQuoteResProcessor"/>
+<bean id="SoapReqFormatter" class="com.idep.healthquote.req.transformer.SoapReqFormatter"/>
+<bean id="FutureSoapResFormatter" class="com.idep.healthquote.res.transformer.FutureSoapResFormatter"/>
+<bean id="HealthQuoteLoggerProcessor" class="com.idep.healthquote.carrier.log.processor.HealthQuoteLoggerProcessor"/>
+<bean id="CarrierQuoteServiceReqLogger" class="com.idep.healthquote.carrier.log.processor.CarrierQuoteServiceReqLogger"/>
+<bean id="CarrierQuoteServiceResLogger" class="com.idep.healthquote.carrier.log.processor.CarrierQuoteServiceResLogger"/>
+<bean id="MaxBupaGetPlanCodeProcessor" class="com.idep.healthquote.req.processor.MaxBupaGetPlanCodeProcessor"/>
+<bean id="MaxBupaXmlTagRemoveProcessor" class="com.idep.healthquote.carrier.req.processor.MaxBupaXmlTagRemoveProcessor"/>
+<bean id="MaxBupaSOAPResponseFormatter" class="com.idep.healthquote.res.transformer.MaxBupaSOAPResponseFormatter"/>
+<bean id="HealthQuoteElderMemberDataProcessor" class="com.idep.healthquote.req.processor.HealthQuoteElderMemberDataProcessor"/>
+<bean id="CalculateDOBMinMaxProcessor" class="com.idep.healthquote.res.processor.CalculateDOBMinMaxProcessor"/>
+<bean id="RoyalSundaramSumInsureReqProcessor" class="com.idep.healthquote.carrier.req.processor.RoyalSundaramSumInsureReqProcessor"/>
+<bean id="FutureGenraliUpdatedSumInsuredReq" class="com.idep.healthquote.carrier.req.processor.FutureGenraliUpdatedSumInsuredReq"/>
+<bean id="FutureGenSumInsuredReqProcessor" class="com.idep.healthquote.carrier.req.processor.FutureGenSumInsuredReqProcessor"/>
+<bean id="CarrierCityLoader" class="com.idep.healthquote.req.processor.CarrierCityLoader"/>
+<bean id="ABHIDiamondDecideRouteProcessor" class="com.idep.healthquote.carrier.req.processor.ABHIDiamondDecideRouteProcessor"/>
+<bean id="CalculateDeductibleProcessor" class="com.idep.healthquote.res.processor.CalculateDeductibleProcessor"/>
+<bean id="IterateFamilyAsIndividual" class="com.idep.healthquote.req.processor.IterateFamilyAsIndividual"/>
+<bean id="PremiumRatioCalculateProcessor" class="com.idep.healthquote.res.processor.PremiumRatioCalculateProcessor"/>
+<bean id="CarrierServiceExceptionResponseHandler" class="com.idep.healthquote.res.processor.CarrierServiceExceptionResponseHandler"/>
+<bean id="CignaResRiderProcessor" class="com.idep.healthquote.res.processor.CignaResRiderProcessor"/>
+<bean id="CignaBasicPremiumCalculator" class="com.idep.healthquote.res.processor.CignaBasicPremiumCalculator"/>
+<bean id="ResponseFilterProcessor" class="com.idep.healthquote.res.processor.ResponseFilterProcessor"/>
+
+<bean id="HealthQuoteshutdownStrategy" class="org.apache.camel.impl.DefaultShutdownStrategy">
+        <property name="timeout" value="30"/>
+</bean>
+
+
+ 
+<camelContext threadNamePattern="HealthThread:#counter#" id="HealthQuoteCalculator" xmlns="http://camel.apache.org/schema/blueprint">
+  <threadPoolProfile poolSize="50" maxPoolSize="100" maxQueueSize="1000" customId="true" id="healthreqPool"/>
+  <route id="HealthQuoteCalculatorRoute">
+    <from uri="cxfrs:bean:HealthQuoteEndpoint?continuationTimeout=90000"/>
+    
+      <choice id="HealthQuoteDecision">
+      <when id="HealthQuoteCalcReq">
+        <simple>${header.operationName} == "calculateHealthQuote"</simple>
+        <bean ref="HealthQuoteCalcServiceImpl" method="calculateHealthQuote" id="HealthQuoteReqBean"/>
+    <process ref="HealthRequestProcessor" id="HealthQuoteReqProcessor"/>
+    <bean ref="HealthQuoteResponse" method="sendGenericResponse"/>
+    </when>
+     <when id="PlanHealthQuoteCalcReq">
+        <simple>${header.operationName} == "calculatePlanHealthQuote"</simple>
+        <bean ref="HealthQuoteCalcServiceImpl" method="calculateHealthQuote" id="PlanHealthQuoteReqBean"/>
+    <process ref="PlanHealthRequestProcessor" id="PlanHealthQuoteReqProcessor"/>
+    <bean ref="HealthQuoteResponse" method="sendGenericResponse"/>
+    
+    </when>
+    </choice>
+    <!-- <marshal>
+      <json prettyPrint="true" library="Jackson"/>
+    </marshal>
+     -->
+  </route>
+</camelContext>
+</blueprint>

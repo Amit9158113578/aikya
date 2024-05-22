@@ -1,0 +1,20 @@
+{
+  "documentIdFields" : [ "businessLineId", "carrierId" ],
+  "inputReqFields" : [ {
+    "field" : "businessLineId"
+  }, {
+    "field" : "carrierId"
+  }, {
+    "field" : "productId"
+  }, {
+    "field" : "TransactionNo"
+  }, {
+    "field" : "policyNo"
+  }, {
+    "field" : "apPreferId"
+  }, {
+    "field" : "transactionStatusCode"
+  }, {
+    "field" : "proposalId"
+  } ]
+}

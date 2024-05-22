@@ -1,0 +1,32 @@
+# Compiled class files
+**/*.class
+
+# Logs
+**/*.log
+
+# IntelliJ IDEA files
+**/.idea/
+
+# Eclipse files
+**/.classpath
+**/.project
+**/.settings/
+
+# Maven
+**/target/
+
+# Gradle
+**/build/
+**/.gradle/
+
+# JAR files
+**/*.jar
+
+# IDE-specific directories
+**/.vscode/
+
+# OS-specific files
+**/.DS_Store
+**/Thumbs.db
+
+**/.settings/org.eclipse.jdt.core.prefs

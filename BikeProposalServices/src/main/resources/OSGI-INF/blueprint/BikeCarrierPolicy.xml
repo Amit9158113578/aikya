@@ -1,0 +1,147 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<blueprint xmlns="http://www.osgi.org/xmlns/blueprint/v1.0.0"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:cxf="http://camel.apache.org/schema/blueprint/cxf"
+	xsi:schemaLocation="
+       http://www.osgi.org/xmlns/blueprint/v1.0.0 http://www.osgi.org/xmlns/blueprint/v1.0.0/blueprint.xsd
+        http://camel.apache.org/schema/blueprint/cxf http://camel.apache.org/schema/blueprint/cxf/camel-cxf.xsd
+       http://camel.apache.org/schema/blueprint http://camel.apache.org/schema/blueprint/camel-blueprint.xsd">
+
+	<cxf:rsServer id="BikePolicyServiceEndpoint" address="/bikepolicy" serviceClass="com.idep.proposal.service.BikeProposalService" loggingFeatureEnabled="true">
+		<cxf:providers>
+			<bean class="org.apache.cxf.rs.security.cors.CrossOriginResourceSharingFilter" />
+		</cxf:providers>
+	</cxf:rsServer>
+  <camelContext trace="false" streamCache="true" threadNamePattern="BIKEPOLICY#counter#" id="BikePolicyServiceContext"
+		xmlns="http://camel.apache.org/schema/blueprint">
+	<dataFormats>
+			  <xmljson forceTopLevelObject="true" skipWhitespace="true"
+				trimSpaces="true" skipNamespaces="true" removeNamespacePrefixes="true"
+				id="Kotakxmljson" />
+		</dataFormats>
+		
+		
+  	   <onException>
+			<exception>java.net.SocketTimeoutException</exception>
+			<exception>java.net.SocketException</exception>
+			<handled>
+				<constant>true</constant>
+			</handled>
+			<log message="Bike policy service seems to be down" />
+			<process ref="ProposalExceptionProcessor" customId="true" id="PolicyExceptionProcessor" />
+		</onException>
+		<onException>
+			<exception>org.apache.camel.component.http4.HttpOperationFailedException</exception>
+			<handled>
+				<constant>true</constant>
+			</handled>
+			<log message="Bike policy Http Operation Failed : check input provided" />
+			<process ref="ProposalExceptionProcessor" customId="true" id="HttpOperationFailedException" />
+		</onException>
+		<onException>
+			<exception>com.idep.proposal.exception.processor.ExecutionTerminator</exception>
+			<exception>java.lang.Exception</exception>
+			<handled>
+				<constant>true</constant>
+			</handled>
+			<log message="Bike policy process terminated" />
+			<process ref="ProposalExceptionProcessor" customId="true" id="ExecutionTerminator" />
+			 <bean ref="BikeProposalServiceImpl" method="sendMessage" />
+		</onException>
+         <route id="BikePolicyRoute">
+			<from uri="cxfrs:bean:BikePolicyServiceEndpoint" />
+			<choice id="PolicyDecision">
+				<when id="BikePolicyReq">
+					<simple>${header.operationName} == "createBikePolicy"</simple>
+					<bean ref="BikeProposalServiceImpl" method="submitBikeProposal" id="BikePolicyRequest" />
+					<process ref="TransformPolicyRequest" id="TransformPolicyRequest" />
+					        <loop id="policyServiceInvoke" >
+			                     <header>noOfServiceInvoke</header>
+			                       <choice id="validatePolicyServiceInvokeStatus">
+	 								 <when id="success">
+								      <simple>${header.invokeservice} == "True"</simple>
+                         		      <process ref="UpdatePolicyStageProcessor" id="TransformServiceRequest" />
+               						  <to pattern="InOut" uri="webservconsumer://invoke" id="soap_OR_restServiceInvoke" />
+                					   	<log message="response from policy invoke service:${body}"></log>
+                					   	<process ref="ValidateResponse" id="ValidateResponse" />
+			                    	  </when>
+			                        </choice>
+			                  </loop>
+			                   <choice id="validateResponse">
+								  <when id="BikeProposalReq">
+									      <simple>${header.carrierReqMapConf} == "Yes"</simple>
+			                                 <process ref="JoltPolicyResProcessor" id="JoltPolicyResProcessor" />
+            								 <to pattern="InOut" uri="joltTransformer://invoke" />
+			                       </when>
+			                    </choice>
+			                     <multicast id="profileAndUIResponse">
+			                          <pipeline>
+			                                <setHeader headerName="bikePolicyResponse"><simple>bikePolicyResponse</simple></setHeader>
+			                      	         <process ref="ProposalReqDBStore" id="CarrierProposalReqDBstore" />
+			                           </pipeline>
+									    <pipeline>
+											   <process ref="UserProfileReqProcessor" id="UserProfileReqProcessor" />
+										         <multicast id="downloadPolicyDoc">
+			                                      <pipeline>
+											                <to pattern="InOnly" uri="activemq:queue:policyDocDownload" id="policyDocQueue" />
+											       </pipeline>
+											       <pipeline>
+												        <choice id="sendPolicyEmails">
+									 				        <when id="validateSendEmail">
+										     				  <simple>${header.sendPolicyEmail} == "Y"</simple>
+															    <log message="send email request :${body}"></log>
+															     <process ref="EmailTemplateLoader" id="EmailTemplateLoader"/>
+															     <to pattern="InOnly" uri="activemq:queue:Emails" id="BikePolicyEmail" />
+				                                          </when>
+				                                     </choice>
+			                                      </pipeline>
+			                                      <pipeline>
+			                                       <choice id="createPolicyDocument">
+								 				       <when id="validatePolicyDocument">
+						     				 		       <simple>${header.createPolicyDocument} == "Y"</simple>
+											                <log message="policy document create request :${body}"></log>
+											                 <to pattern="InOnly" uri="activemq:queue:kotakPolicyDocDownload" id="BikePolicyEmail" />
+													    </when>
+												      </choice>
+												    </pipeline>
+			                                     </multicast>
+										</pipeline>
+										 <pipeline>
+										      <bean ref="BikePolicyCreatorImpl" method="policyResponse" id="NEWINDCarPolicySubmit" />
+										 </pipeline>
+								  </multicast>
+				           </when>
+			    </choice>
+         </route>
+       <route id="BikePolicyDocDownloadRoute">
+		<from uri="activemq:queue:policyDocDownload" id="policyDocDownloadRoute">
+			<description />
+		</from>
+		<bean ref="PolicyDocumentReqQListener" method="onMessage" id="PolicyDocumentReqQListener" />
+		<log message="before bike policy doc download processor :${body}"></log>
+        <process ref="BikePolicyDocDownloadProcessor" id="BikePolicyDocDownloadProcessor" />
+        <log message="bike policy document updated/uploaded successfully : ${body}" />
+       </route>
+       
+      <route id="KotakBikePolicyDocDownload">
+		<from uri="activemq:queue:kotakPolicyDocDownload" id="policyDocDownloadRoute">
+			<description />
+		 </from>
+		        <bean ref="PolicyDocumentReqQListener" method="onMessage" id="KotakBikePolicyReqQListener" />
+				<log message="request for create policy document for kotak : ${body}" />
+				<process ref="PolicyDocumentReqProcessor" id="KotakBikeDocumentReqProcessor" />
+				<process ref="PolicyDocViewerReqProcessor" id="PolicyDocViewerReqProcessor" />
+				<to pattern="InOut" uri="xpathmapper://xpathmapdata" id="kotakBikeXPathMapper" />
+				<process ref="PolicyDocJasperProcessor" id="PolicyDocJasperProcessor" />
+				<process ref="PolicyPDFSignProcessor" id="PolicyPDFSignProcessor" />
+				<to pattern="InOut" uri="xpathmapper://xpathmapdata" id="KOTAKPDFREQXPathMapper" />
+				<process ref="PolicyPDFSignReqProcessor" id="PolicyPDFSignReqProcessor" />
+				<to pattern="InOut" uri="webservconsumer://invoke" id="KotakBIKEPROPURL" />
+				<log message="KOTAK Bike policy signed service response : ${body}" />
+				<process ref="SOAPResultProcessor" id="SOAPResultProcessor" />
+				<marshal ref="Kotakxmljson" id="PDFXMLTOJSON" />
+				<process ref="PolicyPDFResProcessor" id="PolicyPDFResProcessor" />
+				<process ref="UserProfilePolicyUpdateProcessor" id="UserProfilePolicyUpdateProcessor" />
+				<process ref="BikeProposalLogProcessor" id="KotakBikeProposalLogProcessor7" />
+	</route>
+  </camelContext>
+</blueprint>

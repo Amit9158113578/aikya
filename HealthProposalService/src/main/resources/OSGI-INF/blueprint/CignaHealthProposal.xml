@@ -1,0 +1,260 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<blueprint xmlns="http://www.osgi.org/xmlns/blueprint/v1.0.0"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:cxf="http://camel.apache.org/schema/blueprint/cxf"
+	xsi:schemaLocation="
+       http://www.osgi.org/xmlns/blueprint/v1.0.0 http://www.osgi.org/xmlns/blueprint/v1.0.0/blueprint.xsd
+        http://camel.apache.org/schema/blueprint/cxf http://camel.apache.org/schema/blueprint/cxf/camel-cxf.xsd
+       http://camel.apache.org/schema/blueprint http://camel.apache.org/schema/blueprint/camel-blueprint.xsd">
+
+	<cxf:rsServer id="CignaProposalEndpoint" address="/CignaHealthPolicyProposal"
+		serviceClass="com.idep.proposal.service.ProposalSubmitService"
+		loggingFeatureEnabled="true">
+		<cxf:providers>
+			<bean
+				class="org.apache.cxf.rs.security.cors.CrossOriginResourceSharingFilter" />
+		</cxf:providers>
+	</cxf:rsServer>
+
+	<bean id="CignaHealthProposalhutdownStrategy" class="org.apache.camel.impl.DefaultShutdownStrategy">
+		<property name="timeout" value="30" />
+	</bean>
+
+	<!-- <bean id="cignahttp" class="org.apache.camel.component.http4.HttpComponent">
+		<property name="camelContext" ref="CignaProposalContext" />
+		<property name="httpConnectionManager" ref="cignaHttpConnectionManager" />
+	</bean>
+
+	<bean id="cignahttps" class="org.apache.camel.component.http4.HttpComponent">
+		<property name="camelContext" ref="CignaProposalContext" />
+		<property name="httpConnectionManager" ref="cignaHttpConnectionManager" />
+	</bean> -->
+
+	<bean id="cignaHttpConnectionManager"
+		class="org.apache.commons.httpclient.MultiThreadedHttpConnectionManager">
+		<property name="params" ref="cignaHttpConnectionManagerParams" />
+	</bean>
+
+	<bean id="cignaHttpConnectionManagerParams"
+		class="org.apache.commons.httpclient.params.HttpConnectionManagerParams">
+		<property name="defaultMaxConnectionsPerHost" value="5" />
+		<property name="maxTotalConnections" value="100" />
+		<property name="connectionTimeout" value="10000" />
+		<property name="soTimeout" value="60000" />
+	</bean>
+
+
+	<camelContext streamCache="true" threadNamePattern="HLTHPROPCIGNA"
+		id="CignaProposalContext" xmlns="http://camel.apache.org/schema/blueprint">
+		<dataFormats>
+			<xmljson forceTopLevelObject="true" namespaceLenient="true"
+				rootName="o" skipWhitespace="true" trimSpaces="true" skipNamespaces="true"
+				removeNamespacePrefixes="true"
+				expandableProperties="policyProductDOList policyProductInsuredDOList policyQuestionSetDOList policyPartyRoleDOList partyAddressDOList policyDocumentDOList partyDOList policyProductAddOnsDOList"
+				id="Cignajsonxml" />
+			<xmljson forceTopLevelObject="true" skipWhitespace="true"
+				trimSpaces="true" skipNamespaces="true" removeNamespacePrefixes="true"
+				id="Cignaxmljson" />
+			<xmljson forceTopLevelObject="true" namespaceLenient="true"
+				rootName="o" skipWhitespace="true" trimSpaces="true" skipNamespaces="true"
+				removeNamespacePrefixes="true"
+				expandableProperties="policyProductDOList policyProductInsuredDOList policyQuestionSetDOList policyPartyRoleDOList partyAddressDOList policyDocumentDOList partyDOList policyProductAddOnsDOList"
+				id="CignaPolicyjsonxml" />
+
+		</dataFormats>
+		<onException>
+			<exception>java.net.SocketTimeoutException</exception>
+			<exception>java.net.SocketException</exception>
+			<handled>
+				<constant>true</constant>
+			</handled>
+			<log message="Cigna Health proposal service seems to be down" />
+			<process ref="ProposalExceptionProcessor" customId="true"
+				id="CignaHealthPropExcepProcessor" />
+		</onException>
+		<onException>
+			<exception>com.idep.policy.exception.processor.ExecutionTerminator</exception>
+			<exception>java.lang.Exception</exception>
+			<handled>
+				<constant>true</constant>
+			</handled>
+			<log message="Cigna Health proposal service Exception occurred" />
+			<process ref="ProposalExceptionProcessor" customId="true"
+				id="CignaHealthPropExcepProcessor" />
+		</onException>
+		<route id="CignaProposalRoute">
+			<from uri="cxfrs:bean:CignaProposalEndpoint" />
+			<choice id="CignaHealthPolicyProposalDecision">
+				<when id="CignaHealthProposalReq">
+					<simple>${header.operationName} == "submitHealthProposal"</simple>
+					<bean ref="ProposalSubmitServiceImpl" method="submitProposal"
+						id="CignaProposalSubmitReq" />
+					<process ref="ProposalReqProcessor" id="CignaProposalReqProcess" />
+					<process ref="HealthPolicyLogProcessor" id="CignaHealthPolicyLogProcessor1" />
+					<process ref="HealthProposalReqLogProcessor" id="ABHIHealthProReqLogProcessor" />
+
+					<!-- <when id="baseEnvStatusTrue">
+						<simple>${header.baseEnvStatus} == "true"</simple>
+						<log message="Base env status true" />
+						<to uri="direct:proposalCreateRequest" />
+					</when>
+					<when id="baseEnvStatusFalse">
+						<simple>${header.baseEnvStatus} == "false"</simple>
+						<log message="Base env status false" />-->
+
+						<multicast id="CignaProposalMessageSender">
+							<pipeline id="CignaProposalQMessage">
+								<to uri="direct:proposalCreateRequest" />
+							</pipeline>
+							<pipeline> 
+								<process ref="HealthGeneratePolicyNumberProcessor" id="CignaHealthProposalDBReqProcessor" />
+								<to pattern="InOut" uri="xpathmapper://xpathmapdata" id="CignaPolicies365XPathMapper" />
+								<unmarshal ref="Cignajsonxml" id="CignaPolicyNumberReqJSONXML" />
+								<process ref="CignaSOAPRequestFormatter" id="CignaSOAPRequestFormatter" />
+								<process ref="XMLCharEmitter" id="CignaXMLCharEmitter" />
+								<setHeader headerName="Content-Type">
+									<simple>text/xml;charset=UTF-8</simple>
+								</setHeader>
+								<process ref="HealthProposalServiceReqLogProcessor" id="CignaServiceReqLogger" />
+								<to pattern="InOut" uri="webservconsumer://invoke" id="CignaGeneratePolicyURL" />
+								<process ref="CarrierServiceExceptionResponseHandler"
+									id="RespoosneValidatore1" />
+								<process ref="HealthProposalServiceResLogProcessor" id="CignaServiceResLogProcessor" />
+								<process ref="CignaSOAPResponseFormatter" id="CignaSOAPResponseFormatter" />
+								<marshal ref="Cignaxmljson" id="CignaXMLTOJSON" />
+								<process ref="CignaHealthProposalRequestFormatter" id="CignaHealthProposalRequestFormatter" />
+								<process ref="CarrierDataLoader" id="CarrierDataLoader" />
+								<process ref="CignaSumInsuredReqProcessor" id="CignaSumInsuredReqProcessor" />
+								<process ref="CignaProposalDataProcessor" id="CignaProposalDataProcessor" />
+								<process ref="CignaInsuredMemberDataProcessor" id="CignaInsuredMemberDataProcessor" />
+								<to pattern="InOut" uri="xpathmapper://xpathmapdata" id="CignaPoliciesproposalXPathMapper" />
+								<log message="Cigna output after proposal mapper " />
+								<process ref="CignaValidateProposalReqModify" id="CignaValidateProposalReqModify" />
+								<process ref="CignaSaveProposalRequestFormatter" id="CignaSaveProposalRequestFormatter" /> 
+								<unmarshal ref="Cignajsonxml" id="CignaValidateProposalReqJSONXML" />
+								<process ref="XMLCharEmitter" id="CignaXMLCharEmitter" />
+								<process ref="CignaValidateProposalSOAPReqFormatter" id="CignaValidateProposalSOAPReqFormatter" />
+								<setHeader headerName="Content-Type">
+									<simple>text/xml;charset=UTF-8</simple>
+								</setHeader>
+								<process ref="HealthProposalServiceReqLogProcessor" id="CignaServiceReqLogger1" />
+								<to pattern="InOut" uri="webservconsumer://invoke" id="CignaSaveProposalURL" />
+								<process ref="CarrierServiceExceptionResponseHandler"
+									id="RespoosneValidatore2" />
+								<process ref="HealthProposalServiceResLogProcessor" id="CignaServiceResLogProcessor2" />
+								<process ref="CignaValidateProposalSOAPResFormatter" id="CignaValidateProposalSOAPResFormatter" />
+								<marshal ref="Cignaxmljson" id="CignaXMLTOJSON" />
+								<process ref="ProposalResHandler" id="CignaProposalResHandlerProcess" />
+								<to pattern="InOut" uri="mapper://mapdata" />
+								<process ref="ProposalReqHandler" id="CignaProposalMapperResponse" />
+								<process ref="ProposalReqDBStore" id="CignaProposalResDBStore" />
+								<process ref="ProposalResProcessor" id="CignaProposalResProcessor" />
+								<bean ref="ProposalSubmitServiceImpl" method="sendMessage" />
+								<marshal>
+									<json prettyPrint="true" library="Jackson" />
+								</marshal>
+								<process ref="HealthPolicyLogProcessor" id="CignaHealthPolicyLogProcessor2" />
+						 	</pipeline>
+						</multicast>
+					<!--</when> -->
+				</when>
+				<when id="CignaHealthPolicyCreator">
+					<simple>${header.operationName} == "createPolicy"</simple>
+					<log message="Cigna policy create request received" />
+					<bean ref="PolicySubmitServiceImpl" method="submitPolicy"
+						id="CignaPolicyServiceRequest" />
+					<process ref="HealthPolicyLogProcessor" id="CignaHealthPolicyLogProcessor3" />
+					<multicast>
+						<pipeline>
+							<process ref="PaymentResponseUpdateProcessor" id="CignaHealthPaymentResProcessor" />
+							<process ref="ProposalReqDBStore" id="CignaHealthPolicyResDBStore" />
+							<log message="Payment response added in database" />
+							<process ref="HealthPolicyLogProcessor" id="CignaHealthPolicyLogProcessor4" />
+						</pipeline>
+						<pipeline>
+							<process ref="PaymentResponseValidator" id="CignaPaymentResValidator" />
+							<choice id="CIGNAPaymentResponse">
+						      <when id="CIGNAPaymentResponseReq">
+							   <simple>${header.reqFlag} == "True"</simple>
+							<process ref="HealthPolicyReqProcessor" id="CIGNAHealthPolicyReqProcessor" />
+							<process ref="HealthPaymentProcessor" id="HealthPaymentProcessor" />
+							<to pattern="InOut" uri="xpathmapper://xpathmapdata" id="CignaReqXPathMapper" />
+							<log message="Cigna output after policy mapper" />
+							<process ref="CignaSaveProposalReqProcessor" id="CignaSaveProposalReqProcessor" />
+							<unmarshal ref="CignaPolicyjsonxml" id="CignaPolicyReqJSONXML" />
+							<process ref="XMLCharEmitter" id="CignaXMLCharEmitter" />
+							<process ref="CignaValidateProposalSOAPReqFormatter" id="CignaValidateProposalSOAPReqFormatter2" />
+							<setHeader headerName="Content-Type">
+									<simple>text/xml;charset=UTF-8</simple>
+							</setHeader>
+							<log message="Cigna input before policy webconsumer call " />
+							<to pattern="InOut" uri="webservconsumer://invoke" id="CignaSaveProposalURL" />
+							<log message="Cigna output after policy webconsumer call" />
+							<process ref="CarrierServiceExceptionResponseHandler"
+									id="CarrierServiceExceptionResponseHandler" />
+							<process ref="CignaValidateProposalSOAPResFormatter" id="CignaValidateProposalSOAPResFormatter" />
+							<marshal ref="Cignaxmljson" id="CignaXMLTOJSON" />
+							<process ref="CarrierPolicyResponseProcessor" id="CarrierPolicyResponseProcessor" />
+							<log message="Cigna input before policyREQ mapper" />
+							<to pattern="InOut" uri="mapper://mapdata" id="CIGNAEPolicyReqMapper" />
+							<log message="Cigna output after policyREQ mapper" />
+							<process ref="HealthPolicyReqHandler" id="CIGNAHealthPolicyReqHandler" />
+							<process ref="ProposalReqDBStore" id="CIGNAHealthProposalReqDBStore" />
+							<process ref="HealthPolicyResHandler" id="CIGNAHealthPolicyRespHandler" />
+							<to pattern="InOut" uri="mapper://mapdata" id="CIGNAPolicyResMapperUI" />
+							<process ref="HealthPolicyLogProcessor" id="CignaHealthPolicyLogProcessor5" />
+							<multicast>
+								<pipeline>
+									<process ref="HealthPolicyReqHandler" id="CIGNAHealthPolicyRes" />
+									<log message="Cigna input before UserProfileReqProcessor" />
+									<process ref="UserProfileReqProcessor" id="CIGNAUserProfileReqProcessor" />
+									<log message="Cigna ouput after UserProfileReqProcessor"/> 
+									<to pattern="InOnly" uri="activemq:queue:CignaPolicyDocReqQ"
+										id="CignaPolicyDocReqQ" />
+								</pipeline>
+								<pipeline>
+									<process ref="HealthPolicyReqHandler" id="CIGNAHealthPolicyResHandler" />
+									<process ref="HealthPolicyResProcessor" id="CIGNAHeathPolicyResProcessor" />
+									<bean ref="PolicySubmitServiceImpl" method="sendMessage"
+										id="CIGNAPolicyServiceResponse" />
+								</pipeline>
+							</multicast>
+							</when>
+							   <when id="CignaProposalUPDTError">
+									<simple>${header.reqFlag} == "False"</simple>
+									<log message="cigna payment error " />
+									<bean ref="PolicySubmitServiceImpl" method="sendMessage" />
+							</when>
+						   </choice>
+						</pipeline>
+					</multicast>
+				</when>
+			</choice>
+		</route>
+
+		<route id="CignaHealthPolicyDocReqQListener">
+			<from uri="activemq:queue:CignaPolicyDocReqQ" id="CignaHealthPolicyDocReqQ">
+				<description />
+			</from>
+			<bean ref="PolicyDocumentReqQListener" method="onMessage"
+				id="CignaHealthPolicyReqQListener" />
+			<log message="Cigna input before CignaPolicyDocumentReqProcessor" />
+			<process ref="CignaPolicyDocumentReqProcessor" id="CignaPolicyDocumentReqProcessor" />
+			<log message="Cigna output after CignaPolicyDocumentReqProcessor" />
+		</route>
+			<route id="createProposalRoute">
+			<from uri="direct:proposalCreateRequest" />
+			<log message="Cigna Health proposal request sent to database" />
+			<process ref="HealthProposalDBReqProcessor" id="CignaHealthProposalDBReqProcessorBASE" />
+			<to pattern="InOut" uri="xpathmapper://xpathmapdata" id="CignaPolicies365XPathMapperBASE" />
+			<process ref="ProposalReqDBStore" id="CignaProposalReqDBStoreBASE" />
+			<process ref="ProposalResProcessor" id="CignaProposalResProcessorBASE" />
+			<bean ref="ProposalSubmitServiceImpl" method="sendMessage"
+				id="CignaHealthProposalResponseBASE" />
+			<marshal>
+				<json prettyPrint="true" library="Jackson" />
+			</marshal>
+			<process ref="HealthPolicyLogProcessor" id="CignaHealthPolicyLogProcessor7" />
+		</route> 
+	</camelContext>
+
+</blueprint>

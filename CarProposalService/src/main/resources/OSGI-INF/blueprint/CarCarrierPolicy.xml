@@ -1,0 +1,153 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<blueprint xmlns="http://www.osgi.org/xmlns/blueprint/v1.0.0"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:cxf="http://camel.apache.org/schema/blueprint/cxf"
+	xsi:schemaLocation="
+       http://www.osgi.org/xmlns/blueprint/v1.0.0 http://www.osgi.org/xmlns/blueprint/v1.0.0/blueprint.xsd
+        http://camel.apache.org/schema/blueprint/cxf http://camel.apache.org/schema/blueprint/cxf/camel-cxf.xsd
+       http://camel.apache.org/schema/blueprint http://camel.apache.org/schema/blueprint/camel-blueprint.xsd">
+
+	<cxf:rsServer id="CarPolicyServiceEndpoint" address="/carpolicy" serviceClass="com.idep.proposal.service.CarProposalService" loggingFeatureEnabled="true">
+		<cxf:providers>
+			<bean class="org.apache.cxf.rs.security.cors.CrossOriginResourceSharingFilter" />
+		</cxf:providers>
+	</cxf:rsServer>
+  <camelContext trace="false" streamCache="true" threadNamePattern="CARPOLICY#counter#" id="CarPolicyServiceContext"
+		xmlns="http://camel.apache.org/schema/blueprint">
+		<dataFormats>
+			<xmljson forceTopLevelObject="true" rootName="PartnerIntegration"
+				skipWhitespace="true" trimSpaces="true" skipNamespaces="true"
+				removeNamespacePrefixes="true" id="kotakproposaljsonxml" />
+		</dataFormats>
+		
+  	   <onException>
+			<exception>java.net.SocketTimeoutException</exception>
+			<exception>java.net.SocketException</exception>
+			<handled>
+				<constant>true</constant>
+			</handled>
+			<log message="Car policy service seems to be down" />
+			<process ref="ProposalExceptionProcessor" customId="true" id="PolicyExceptionProcessor" />
+		</onException>
+		<onException>
+			<exception>org.apache.camel.component.http4.HttpOperationFailedException</exception>
+			<handled>
+				<constant>true</constant>
+			</handled>
+			<log message="Car policy Http Operation Failed : check input provided" />
+			<process ref="ProposalExceptionProcessor" customId="true" id="HttpOperationFailedException" />
+		</onException>
+		<onException>
+			<exception>com.idep.proposal.exception.processor.ExecutionTerminator</exception>
+			<exception>java.lang.Exception</exception>
+			<handled>
+				<constant>true</constant>
+			</handled>
+			<log message="Car policy process terminated" />
+			<process ref="ProposalExceptionProcessor" customId="true" id="ExecutionTerminator" />
+			 <bean ref="CarProposalServiceImpl" method="sendMessage" />
+		</onException>
+         <route id="CarPolicyRoute">
+			<from uri="cxfrs:bean:CarPolicyServiceEndpoint" />
+			<choice id="PolicyDecision">
+				<when id="CarPolicyReq">
+					<simple>${header.operationName} == "createPolicy"</simple>
+					<bean ref="CarProposalServiceImpl" method="submitCarProposal" id="CarPolicyRequest" />
+					<process ref="TransformPolicyRequest" id="TransformPolicyRequest" />
+					        <loop id="policyServiceInvoke" >
+			                     <header>noOfServiceInvoke</header>
+			                       <choice id="validatePolicyServiceInvokeStatus">
+	 								 <when id="success">
+								      <simple>${header.invokeservice} == "True"</simple>
+                         		      <process ref="UpdatePolicyStageProcessor" id="TransformServiceRequest" />
+               						  <to pattern="InOut" uri="webservconsumer://invoke" id="soap_OR_restServiceInvoke" />
+                					   	<log message="response from car policy invoke service:${body}"></log>
+                					   	<process ref="ValidateResponse" id="ValidateResponse" />
+			                    	  </when>
+			                        </choice>
+			                  </loop>
+			                   <choice id="validateResponse">
+								  <when id="CarProposalReq">
+									      <simple>${header.carrierReqMapConf} == "Yes"</simple>
+			                                 <process ref="JoltPolicyResProcessor" id="JoltPolicyResProcessor" />
+            								 <to pattern="InOut" uri="joltTransformer://invoke" />
+			                       </when>
+			                    </choice>
+			                     <multicast id="profileAndUIResponse">
+			                          <pipeline>
+			                                <setHeader headerName="carPolicyResponse"><simple>carPolicyResponse</simple></setHeader>
+			                      	         <process ref="ProposalReqDBStore" id="CarrierProposalReqDBstore" />
+			                           </pipeline>
+									    <pipeline>
+											   <process ref="UserProfileReqProcessor" id="UserProfileReqProcessor" />
+										         <multicast id="downloadPolicyDoc">
+			                                      <pipeline>
+											                <to pattern="InOnly" uri="activemq:queue:policyDocDownload" id="policyDocQueue" />
+											       </pipeline>
+											       <pipeline>
+												        <choice id="sendPolicyEmails">
+									 				        <when id="validateSendEmail">
+										     				  <simple>${header.sendPolicyEmail} == "Y"</simple>
+															    <log message="send email request :${body}"></log>
+															     <process ref="EmailTemplateLoader" id="EmailTemplateLoader"/>
+															     <to pattern="InOnly" uri="activemq:queue:Emails" id="CarPolicyEmail" />
+				                                          </when>
+				                                     </choice>
+			                                      </pipeline>
+			                                      <pipeline>
+			                                       <choice id="createPolicyDocument">
+								 				       <when id="validatePolicyDocument">
+						     				 		        <simple>${header.createPolicyDocument} == "Y"</simple>
+											                <log message="policy document create request :${body}"></log>
+											                 <to pattern="InOnly" uri="activemq:queue:kotakPolicyDocDownload" id="CarPolicyEmail" />
+													    </when>
+												      </choice>
+												    </pipeline>			                                      
+			                                     </multicast>
+										</pipeline>
+										 <pipeline>
+										      <bean ref="CarPolicyCreatorImpl" method="policyResponse" id="NEWINDCarPolicySubmit" />
+										 </pipeline>
+								  </multicast>
+				           </when>
+			    </choice>
+         </route>
+       <route id="CarPolicyDocDownloadRoute">
+		<from uri="activemq:queue:policyDocDownload" id="policyDocDownloadRoute">
+			<description />
+		</from>
+		<bean ref="PolicyDocumentReqQListener" method="onMessage" id="PolicyDocumentReqQListener" />
+        <process ref="CarPolicyDocDownloadProcessor" id="CarPolicyDocDownloadProcessor" />
+        <log message="Car policy document updated/uploaded successfully : ${body}" />
+       </route>
+       
+     <route id="KotakCarPolicyDocDownload">
+		<from uri="activemq:queue:kotakPolicyDocDownload" id="policyDocDownloadRoute">
+			<description />
+		 </from>
+		    <bean ref="PolicyDocumentReqQListener" method="onMessage" id="KotakBikePolicyReqQListener" />
+			<process ref="ProposalDataLoader" id="KotakProposalDataLoader" />
+			<process ref="CarProposalLogProcessor" id="KOTAKCarProposalLogProcessor7" />
+			<multicast id="kotakPolicyDoc">
+				<pipeline>
+					<process ref="KotakReqFormatter" id="KotakReqFormatter" />
+					<process ref="CarProposalLogProcessor" id="KOTAKCarProposalLogProcessor8" />
+					<log message="kotak Create Policy xpathmapper://xpathmapdata :${body} "/>
+					<to pattern="InOut" uri="xpathmapper://xpathmapdata" id="KOTAKPROPREQXPathMapper" />
+					 <multicast id="KOTAKTransformedREQ">
+						<pipeline id="sendQCopy">
+							<process ref="KOTAKProposalDBUpdate" id="KOTAKProposalDBUpdate" />
+							<process ref="ProposalReqDBStore" id="KOTAKProposalTransformReq" />
+						</pipeline>
+						<pipeline id="InvokeWebService">
+							<process ref="KOTAKPolicyDocumentProcessor" id="KOTAKPolicyDocumentProcessor" />
+							 <recipientList>
+								<simple>${header.policyDocumentService}</simple>
+							</recipientList> 
+							<log message="kotak PolicyDoc service response :${body} "/>
+						</pipeline>
+					</multicast>
+				</pipeline>
+			</multicast>
+	    </route>
+  </camelContext>
+</blueprint>

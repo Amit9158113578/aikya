@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<blueprint xmlns="http://www.osgi.org/xmlns/blueprint/v1.0.0"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xmlns:camel="http://camel.apache.org/schema/blueprint"
+       xmlns:cxf="http://camel.apache.org/schema/blueprint/cxf"
+       xmlns:jaxws="http://cxf.apache.org/blueprint/jaxws"
+       xmlns:cm="http://aries.apache.org/blueprint/xmlns/blueprint-cm/v1.0.0"
+       xmlns:camelcxf="http://camel.apache.org/schema/blueprint/cxf"
+       xsi:schemaLocation="
+       http://www.osgi.org/xmlns/blueprint/v1.0.0 http://www.osgi.org/xmlns/blueprint/v1.0.0/blueprint.xsd
+       http://camel.apache.org/schema/blueprint/cxf http://camel.apache.org/schema/blueprint/cxf/camel-cxf.xsd
+       http://cxf.apache.org/blueprint/jaxws http://cxf.apache.org/schemas/blueprint/jaxws.xsd
+       http://camel.apache.org/schema/blueprint  http://camel.apache.org/schema/blueprint/camel-blueprint-2.12.0.xsd">
+
+<bean id="myDeadLetterErrorHandler" class="org.apache.camel.builder.DeadLetterChannelBuilder">
+    <property name="deadLetterUri" value="activemq:queue:DLQ"/>
+    <property name="redeliveryPolicy" ref="myRedeliveryPolicyConfig"/>
+</bean>
+ 
+<bean id="myRedeliveryPolicyConfig" class="org.apache.camel.processor.RedeliveryPolicy">
+    <property name="maximumRedeliveries" value="1"/>
+    <property name="redeliveryDelay" value="5000"/>
+    <property name="asyncDelayedRedelivery" value="true"/>
+    <property name="retryAttemptedLogLevel" value="WARN"/>
+</bean>
+
+<cm:property-placeholder persistent-id="AMQCustomProperties"> 
+ </cm:property-placeholder> 
+
+<bean id="jmsConnectionFactory"
+   class="org.apache.activemq.ActiveMQConnectionFactory">
+   <property name="brokerURL" value="${amqbroker.host}:${amqbroker.port}" />
+   <property name="userName" value="${amqbroker.username}"/>
+   <property name="password" value="${amqbroker.password}"/>
+</bean>
+ 
+<bean id="pooledConnectionFactory"
+   class="org.apache.activemq.pool.PooledConnectionFactory" init-method="start" destroy-method="stop">
+   <property name="maxConnections" value="${amq.maxConnections}" />
+   <property name="connectionFactory" ref="jmsConnectionFactory" />
+</bean>
+ 
+<bean id="jmsConfig"
+   class="org.apache.camel.component.jms.JmsConfiguration">
+   <property name="connectionFactory" ref="pooledConnectionFactory"/>
+   <property name="concurrentConsumers" value="${amq.concurrentConsumers}"/>
+   <property name="mapJmsMessage" value="${amq.mapJmsMessage}" />
+   <property name="maxConcurrentConsumers" value="${amq.maxConcurrentConsumers}" />  
+   <property name="deliveryPersistent" value="true" />
+   <property name="acknowledgementModeName" value="CLIENT_ACKNOWLEDGE" />
+</bean>
+ 
+ <bean id="activemq"
+    class="org.apache.activemq.camel.component.ActiveMQComponent">
+    <property name="configuration" ref="jmsConfig"/>
+    <property name="transacted" value="false"/>
+ </bean>
+ 	
+	<bean id="LeadsReqQueueListener" class="com.idep.queue.leadsreq.listener.LeadsReqQueueListener"/>
+	<bean id="PrepareLeadRequest" class="com.idep.lead.req.processor.PrepareLeadRequest"/>
+	
+	<bean id="ActiveMQListenershutdownStrategy" class="org.apache.camel.impl.DefaultShutdownStrategy">
+        <property name="timeout" value="30"/>
+	</bean>
+	
+  <camelContext id="LeadRequestQContext" trace="false" threadNamePattern="LeadReqQ:#counter#" xmlns="http://camel.apache.org/schema/blueprint">
+	<route id="LeadRequestsQListenerRoute">
+	    <from uri="activemq:queue:LeadRequestQ" id="LeadRequestsQListener">
+	      <description/>
+	    </from>
+	    <bean ref="LeadsReqQueueListener" method="onMessage" id="LeadsReqQueueListenerMSG"/>
+	    <process ref="PrepareLeadRequest" id="PrepareLeadRequest"/>
+	    <choice id="LeadReqDecisionMaking">
+	      <when id="ValidLeadRequest">
+	        <simple>${header.isLeadRequest} == "Y"</simple>
+	        <to pattern="InOnly" uri="activemq:queue:Leads" id="LeadReqMsg"/>
+	      </when>
+	      <otherwise id="InvalidLeadReq">
+	      </otherwise>
+	    </choice>
+  	</route>
+</camelContext>
+	
+
+</blueprint>

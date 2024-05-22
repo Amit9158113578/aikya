@@ -1,0 +1,65 @@
+
+sample input FOR Email:
+
+{
+
+"emailId":"vikas.katkar@sutrr.com",
+"funcType":"FORGOTPASS"
+
+}
+
+
+
+
+
+Forgot Username :
+
+
+      {
+    
+          "header":    {
+                                "deviceid":"ABCD1234",
+                                "transactionName":"SMSUsername"
+                            },
+
+
+           "body":      { 
+
+                              "mobileNumber":"9028326704",
+                              "funcType":"FORGOTUSERNAME"
+
+                            }
+
+            }
+            
+            
+            
+            
+     2.        
+            {
+          
+                "header":    {
+                                           "deviceid":"ABCD1234",
+                                            "transactionName":"sendEmail"
+                                  },
+
+                "body":       {
+
+                                    "username":"sandeep.jadhav@sutrr.com",
+                                    "funcType":"FORGOTPASS",
+                                    
+
+                                    "paramMap":
+                                                            {
+                                                                  "OTP":"GENERATE",
+                                                                  "USERNAME":"SANDEEP"
+    
+                                                            }
+
+                                   }
+
+            }
+
+			
+
+}

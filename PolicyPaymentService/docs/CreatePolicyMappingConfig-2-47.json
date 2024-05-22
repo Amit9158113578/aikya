@@ -1,0 +1,41 @@
+{
+  "camelAcceptContentType" : "application/json",
+  "requestType" : "JSON",
+  "productId" : {
+    "fields" : [ {
+      "type" : "request",
+      "xpath" : "$.productId",
+      "source" : "request"
+    } ],
+    "reqNode" : "carrierResponse"
+  },
+  "documentType" : "CreateBikePolicyMappingConfig",
+  "httpContentType" : "application/json",
+  "httpMethod" : "POST",
+  "carrierId" : {
+    "fields" : [ {
+      "type" : "request",
+      "xpath" : "$.carrierId",
+      "source" : "request"
+    } ],
+    "reqNode" : "carrierResponse"
+  },
+  "URL" : "NA",
+  "businessLineId" : {
+    "fields" : [ {
+      "type" : "request",
+      "xpath" : "$.businessLineId",
+      "source" : "request"
+    } ],
+    "reqNode" : "carrierResponse"
+  },
+  "proposalId" : {
+    "fields" : [ {
+      "type" : "request",
+      "xpath" : "$.transactionStausInfo.proposalId",
+      "source" : "request"
+    } ],
+    "reqNode" : "carrierResponse"
+  },
+  "sampleRequestId" : "CreatePolicyRequest-2-47-sample"
+}

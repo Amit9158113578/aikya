@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<blueprint xmlns="http://www.osgi.org/xmlns/blueprint/v1.0.0"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xmlns:cxf="http://camel.apache.org/schema/blueprint/cxf"
+       xsi:schemaLocation="
+       http://www.osgi.org/xmlns/blueprint/v1.0.0 http://www.osgi.org/xmlns/blueprint/v1.0.0/blueprint.xsd
+        http://camel.apache.org/schema/blueprint/cxf http://camel.apache.org/schema/blueprint/cxf/camel-cxf.xsd
+       http://camel.apache.org/schema/blueprint http://camel.apache.org/schema/blueprint/camel-blueprint.xsd">
+ 
+<cxf:rsServer id="purchaseStmtEndpoint" address="/policypurchase" serviceClass="com.idep.policy.purchase.service.PolicyPurchaseService" loggingFeatureEnabled="true">
+<cxf:providers>
+        <bean class="org.apache.cxf.rs.security.cors.CrossOriginResourceSharingFilter" />
+</cxf:providers>
+</cxf:rsServer>
+
+<bean id="PolicyPurchaseReqProcessor" class="com.idep.policy.purchase.processor.PolicyPurchaseReqProcessor"/>
+<bean id="PolicyPurchaseResProcessor" class="com.idep.policy.purchase.processor.PolicyPurchaseResProcessor"/>
+
+<camelContext streamCache="false" id="PolicyPurchaseStmtContext" xmlns="http://camel.apache.org/schema/blueprint">
+  	<route id="PolicyPurchaseStmtRoute">
+    	<from uri="cxfrs:bean:purchaseStmtEndpoint"/>
+    	<process ref="PolicyPurchaseReqProcessor" id="PolicyPurchaseReqProcessor"/>
+    	<to pattern="InOut" uri="xpathmapper://xpathmapdata" id="BhartiAXACarXPathMapper" />
+    	<process ref="PolicyPurchaseResProcessor" id="PolicyPurchaseResProcessor"/>
+    	<marshal>
+          <json prettyPrint="true" library="Jackson"/>
+        </marshal>
+    </route>
+</camelContext>
+
+</blueprint>

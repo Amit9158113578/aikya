@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<blueprint xmlns="http://www.osgi.org/xmlns/blueprint/v1.0.0"
+       xmlns:camel="http://camel.apache.org/schema/blueprint"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xsi:schemaLocation="http://www.osgi.org/xmlns/blueprint/v1.0.0 http://www.osgi.org/xmlns/blueprint/v1.0.0/blueprint.xsd
+       http://camel.apache.org/schema/blueprint http://camel.apache.org/schema/blueprint/camel-blueprint.xsd">
+
+
+<camelContext trace="false" streamCache="true" threadNamePattern="StarThread:#counter#" id="StarHealthReqQContext" xmlns="http://camel.apache.org/schema/blueprint">
+  <onException>
+    <exception>java.net.SocketTimeoutException</exception>
+    <handled>
+      <constant>true</constant>
+    </handled>
+    <log message="Star Health service not responded within stipulated time frame"/>
+    <process ref="ExceptionMQMSGProcessor" customId="true" id="StarHealthExceptionMQMSGProcessor"/>
+    <to pattern="InOnly" uri="activemq:queue:StarHealthResQ?timeToLive=120000&amp;includeSentJMSMessageID=true"/>
+  </onException>
+  <onException>
+    <exception>com.idep.healthquote.exception.processor.ExecutionTerminator</exception>
+    <exception>java.lang.Exception</exception>
+    <handled>
+      <constant>true</constant>
+    </handled>
+    <log message="Star Health quote process terminated"/>
+    <process ref="ExceptionMQMSGProcessor" customId="true" id="StarHealthExceptionMQMSGProcessor"/>
+    <to pattern="InOnly" uri="activemq:queue:StarHealthResQ?timeToLive=120000&amp;includeSentJMSMessageID=true"/>
+  </onException>
+   <onException>
+    <exception>com.idep.healthquote.exception.processor.RequestValidationTerminator</exception>
+    <handled>
+      <constant>true</constant>
+    </handled>
+    <log message="Star Health quote process terminated"/>
+    <process ref="ResponseQuoteMQMSGProcessor" customId="true" id="StarHealthReqValidatorMQMSGProcessor"/>
+    <to pattern="InOnly" uri="activemq:queue:StarHealthResQ?timeToLive=120000&amp;includeSentJMSMessageID=true"/>
+  </onException>
+  <route id="StarHealthReqQListener">
+    <from uri="activemq:queue:StarHealthReqQ" id="FromStarHealthReqQ">
+      <description/>
+    </from>
+    <bean ref="P365HealthReqQListener" method="onMessage" id="StarHealthReqQBean"/>
+     <log message="star health UI request :${body}"/>
+    <process ref="HealthRequestQProcessor" id="StarHealthReqQProcessor"/>
+    <process ref="HealthQuoteLoggerProcessor" id="StarHealthQuoteLoggerProcessor1"/>
+    <process ref="HealthReqQValidatorProcessor" id="StarHealthReqQValidatorProcessor"/>
+    <process ref="ExternalServiceReqProcessor" id="StarServiceReqProcessor"/>
+    <log message="star health mapper request :${body}"/>
+    <to pattern="InOut" uri="mapper://mapdata"/>
+    <log message="star health mapper request :${body}"/>
+    <log message="star health mapper request headers : ${headers}"/>
+    <process ref="MapperReqProcessor" id="StarHealthMapperReqProcessor"/>
+    <process ref="CarrierTransformReqCollector" id="StarHealthTransformReqCollector"/>
+    <process ref="CarrierQuoteServiceReqLogger" id="StarQuoteLoggerProcessor"/>
+    <camel:setHeader headerName="requestURL">
+    <camel:simple>${header.mapperQuoteURL}</camel:simple>
+    </camel:setHeader>
+    <log message="star health quote request : ${body}"/>
+    <log message="star health quote request headers : ${headers}"/>
+    <!-- <recipientList>
+      <simple>${header.mapperQuoteURL}</simple>
+    </recipientList> -->
+    <to pattern="InOut" uri="webservconsumer://invoke" id="StarHealthQuoteURL"/>
+    <log message="star health quote response : ${body}"/>
+    <process ref="ExternalServiceRespHandler" id="StarServiceResProcessor"/>
+    <to pattern="InOut" uri="mapper://mapdata"/>
+     <process ref="CalculateDOBMinMaxProcessor" id="StarMemberDOBProcessor"/>
+    <process ref="PremiumRatioCalculateProcessor" id="StarPremiumRatioCalculateProcessor"/>
+    <process ref="ExternalServiceResProcessor" id="StarServiceFinalResProcessor"/>
+    <process ref="HealthQuoteLoggerProcessor" id="StarHealthQuoteLoggerProcessor2"/>
+    <multicast id="StarHealthQuoteResponseMSG">
+      <pipeline>
+        <process ref="HealthQuoteDBSender" id="StarHealthQuoteDBSender"/>
+        <to pattern="InOnly" uri="activemqSecondary:queue:HealthQuoteResultsQ"/>
+        <process ref="HealthQuoteLoggerProcessor" id="StarHealthQuoteLoggerProcessor3"/>
+      </pipeline>
+      <pipeline>
+      <process ref="CarrierQuoteServiceResLogger" id="StarQuoteServiceResLogger"/>
+        <process ref="MQMsgProcessor" id="StarHlthMQMsgReqProcessor"/>
+        <!-- <wireTap uri="activemqSecondary:queue:StarHealthResQ?includeSentJMSMessageID=true"/> -->
+        <to pattern="InOnly" uri="activemq:queue:StarHealthResQ?timeToLive=120000&amp;includeSentJMSMessageID=true"/>
+        <process ref="HealthQuoteLoggerProcessor" id="StarHealthQuoteLoggerProcessor4"/>
+      </pipeline>
+    </multicast>
+  </route>
+</camelContext>
+
+</blueprint>

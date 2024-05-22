@@ -1,0 +1,177 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<blueprint xmlns="http://www.osgi.org/xmlns/blueprint/v1.0.0"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xmlns:camel="http://camel.apache.org/schema/blueprint"
+	   xmlns:cm="http://aries.apache.org/blueprint/xmlns/blueprint-cm/v1.1.0"
+       xmlns:cxf="http://camel.apache.org/schema/blueprint/cxf"
+        
+       xsi:schemaLocation=" 
+       http://www.osgi.org/xmlns/blueprint/v1.0.0 http://www.osgi.org/xmlns/blueprint/v1.0.0/blueprint.xsd
+       http://camel.apache.org/schema/blueprint/cxf http://camel.apache.org/schema/blueprint/cxf/camel-cxf.xsd
+       http://camel.apache.org/schema/blueprint http://camel.apache.org/schema/blueprint/camel-blueprint.xsd">
+
+	<cxf:rsServer id="smsemailEndPoint" address="/smsemailservice" serviceClass="com.idep.rest.service.SMSEmailService" loggingFeatureEnabled="true" >
+		<cxf:providers>
+		        <bean class="org.apache.cxf.rs.security.cors.CrossOriginResourceSharingFilter" />
+		 </cxf:providers>
+	</cxf:rsServer>
+	
+<cm:property-placeholder persistent-id="AMQCustomProperties"> 
+ </cm:property-placeholder> 
+
+<bean id="jmsConnectionFactory"
+   class="org.apache.activemq.ActiveMQConnectionFactory">
+   <property name="brokerURL" value="${amqbroker.host}:${amqbroker.port}" />
+   <property name="userName" value="${amqbroker.username}"/>
+   <property name="password" value="${amqbroker.password}"/>
+</bean>
+ 
+<bean id="pooledConnectionFactory"
+   class="org.apache.activemq.pool.PooledConnectionFactory" init-method="start" destroy-method="stop">
+   <property name="maxConnections" value="${amq.maxConnections}" />
+   <property name="connectionFactory" ref="jmsConnectionFactory" />
+</bean>
+ 
+<bean id="jmsConfig"
+   class="org.apache.camel.component.jms.JmsConfiguration">
+   <property name="connectionFactory" ref="pooledConnectionFactory"/>
+   <property name="concurrentConsumers" value="${amq.concurrentConsumers}"/>
+   <property name="mapJmsMessage" value="${amq.mapJmsMessage}" />
+   <property name="maxConcurrentConsumers" value="${amq.maxConcurrentConsumers}" />
+   <property name="asyncConsumer" value="${amq.asyncConsumer}" />
+   <property name="asyncStartListener" value="${amq.asyncStartListener}" />  
+</bean>
+ 
+ <bean id="activemq"
+    class="org.apache.activemq.camel.component.ActiveMQComponent">
+    <property name="configuration" ref="jmsConfig"/>
+    <!-- if we are using transacted then enable CACHE_CONSUMER (if not using XA) to run faster
+	         see more details at: http://camel.apache.org/jms
+	       <property name="transacted" value="${amq.transacted}"/>
+    <property name="cacheLevelName" value="${amq.cacheLevelName}" />
+	    -->
+</bean>
+	     
+ 	<bean id="SMSEmailImplService" class="com.idep.rest.impl.service.SMSEmailImplService"/>
+ 	<bean id="ReportViewer" class="com.idep.rest.impl.service.ReportViewer"/>
+ 	<bean id="ForgotUsernameService" class="com.idep.rest.impl.service.ForgotUsernameService"/>
+ 	<bean id="SMSResponse" class="com.idep.smsemail.response.bean.SMSResponse"/>
+ 	<bean id="EmailResponse" class="com.idep.smsemail.response.bean.EmailResponse"/>
+ 	<bean id="LoginRequestProcessor" class="com.idep.smsemail.request.processor.LoginRequestProcessor"/>
+ 	<bean id="EmailResponseProcessor" class="com.idep.smsemail.response.bean.EmailResponseProcessor"/>
+ 	<bean id="LoginServiceImpl" class="com.idep.smsemail.request.bean.LoginServiceImpl"/>
+ 	<bean id="SMSSerivceResposne" class="com.idep.smsemail.exception.SMSSerivceResposne"/>
+ 	<bean id="SmsEmailOTPQListner" class="com.idep.rest.impl.smsEmailOtp.SmsEmailOTPQListner"/>
+ 	<bean id="GenerateSMSEmailOTP" class="com.idep.rest.impl.smsEmailOtp.GenerateSMSEmailOTP"/>
+ 	<bean id="EmailQueueConsumer" class="com.idep.smsemail.request.processor.EmailQueueConsumer"/>
+ 	<bean id="GenerateEmailOtpRequest" class="com.idep.rest.impl.smsEmailOtp.GenerateEmailOtpRequest"/>
+ 	<bean id="GenerateSMSRequestProcessor" class="com.idep.rest.impl.smsEmailOtp.GenerateSMSRequestProcessor"/>
+ 	
+ 	
+ 	
+<camelContext id="SMSEmailServiceContext" xmlns="http://camel.apache.org/schema/blueprint">
+<onException>
+			<exception>com.idep.smsemail.exception.ExecutionTerminator</exception>
+			<exception>java.lang.Exception</exception>
+			<handled>
+				<constant>true</constant>
+			</handled>
+			<log message="SMS service Exception occure, SMSEmail process terminated" />
+			<process ref="SMSSerivceResposne" customId="true" id="smsemailExcepProcessor" />
+		</onException>
+  <route id="RouteSMSEmailService">
+    <from uri="cxfrs:bean:smsemailEndPoint" id="FromSMSEmailEndPoint">
+      <description/>
+    </from>
+    <choice id="CommunicationDecision">
+      <when id="UserEnquiry">
+        <simple>${header.operationName} == "contactUSInfo"</simple>
+        <bean ref="SMSEmailImplService" method="contactUSInfo" id="BeancontactUSInfo"/>
+        <multicast id="UserEnquiryMessage">
+          <pipeline id="UserPipeline">
+            <bean ref="SMSEmailImplService" method="replyUser" id="BeanreplyUser"/>
+            <to pattern="InOnly" uri="activemq:queue:Emails" id="QreplyUserEmail"/>
+          </pipeline>
+          <pipeline id="InternalPipeline">
+            <bean ref="SMSEmailImplService" method="sendInternalNotification" id="BeansendInternalNotification"/>
+            <multicast id="InternalMessage">
+              <to pattern="InOnly" uri="activemq:queue:Emails" id="QInternalEmail"/>
+              <bean ref="EmailResponse" method="getEmailData" id="BeanInternalEmailResponse"/>
+            </multicast>
+          </pipeline>
+        </multicast>
+      </when>
+      <when id="ForgotUser">
+        <simple>${header.operationName} == "forgotUsername"</simple>
+        <bean ref="ForgotUsernameService" method="forgotUsername" id="BeanForgotUsername"/>
+        <bean ref="SMSEmailImplService" method="sendSMSRequest" id="BeanForgotUsernameSMS"/>
+        <to pattern="InOnly" uri="activemq:queue:SMS" id="QueueFUSMS"/>
+        <bean ref="SMSResponse" method="getSMSData" id="FORGOTUSERNAMEBean"/>
+      </when>
+      
+       <when id="ViewReport">
+        <simple>${header.operationName} == "viewReport"</simple>
+        <bean ref="ReportViewer" method="viewReport" id="ReportViewerBean"/>
+      </when>
+      <when id="Login">
+       <simple>${header.operationName} == "loginRequest"</simple>
+        <bean ref="LoginServiceImpl" method="loginDetails" id="loginServiceImpl"/>
+       <process ref="LoginRequestProcessor" id="LoginRequestProcessor"/>
+       <choice id="LoginRequestProcessorRes">
+	       <when id="LoginSuccessRes">
+	         <simple>${header.validationFlag} == "true"</simple>
+	         <to pattern="InOnly" uri="activemq:queue:SMS" id="QueueLogin"/>
+	         <process ref="EmailResponseProcessor" id="EmailResponseSuccessProcessor"/>
+	         <bean ref="LoginServiceImpl" method="sendMessage" id="sendMessage"/>
+	         </when>
+	         <when id="LoginFailedRes">
+	         <simple>${header.validationFlag} == "false"</simple>
+	         <process ref="EmailResponseProcessor" id="EmailResponseFailedProcessor"/>
+	         <bean ref="LoginServiceImpl" method="sendMessage" id="sendMessageError"/>
+	         </when>
+	     </choice>
+      </when>
+      
+      <when id="SMS">
+        <simple>${header.operationName} == "sendSMSRequest"</simple>
+        <bean ref="SMSEmailImplService" method="sendSMSRequest" id="BeanSMS"/>
+        <multicast id="SMSQueueMessage">
+          <to pattern="InOnly" uri="activemq:queue:SMS" id="QueueSMS"/>
+          <bean ref="SMSResponse" method="getSMSData" id="BeanSMSQResponse"/>
+        </multicast>
+      </when>
+      <when id="Email">
+        <simple>${header.operationName} == "sendEmailRequest"</simple>
+        <bean ref="SMSEmailImplService" method="sendEmailRequest" id="BeanEmail"/>
+        <multicast id="EmailQMessage">
+       <!--  <camel:log message="before EmailQueueConsumer : ${body}"></camel:log>
+        <bean ref="EmailQueueConsumer" method="onMessage" id="EmailQueueConsumer"/> -->
+          <to pattern="InOnly" uri="activemq:queue:Emails" id="QueueEmail"/>
+          <bean ref="EmailResponse" method="getEmailData" id="BeanEmailQResponse"/>
+        </multicast>
+      </when>
+      <when id="Notification">
+        <simple>${header.operationName} == "sendNotifications"</simple>
+        <bean ref="SMSEmailImplService" method="sendNotifications" id="BeanNotification"/>
+        <multicast id="SendMessage">
+          <pipeline id="EmailPipeline">
+            <bean ref="SMSEmailImplService" method="sendEmailRequest" id="BeanNotificationEmail"/>
+            <to pattern="InOnly" uri="activemq:queue:Emails" id="QNotifyEmail"/>
+          </pipeline>
+          <pipeline id="SMSPipeline">
+            <bean ref="SMSEmailImplService" method="sendSMSRequest" id="BeanNotificationSMS"/>
+            <multicast id="SendSMS">
+              <to pattern="InOnly" uri="activemq:queue:SMS" id="QNotifySMS"/>
+              <bean ref="SMSResponse" method="getSMSData" id="BeanSMSResponse"/>
+            </multicast>
+          </pipeline>
+        </multicast>
+      </when>
+    </choice>
+    <marshal>
+      <json prettyPrint="true" library="Jackson" id="JSONMarshal"/>
+    </marshal>
+  </route>
+</camelContext>
+
+</blueprint>

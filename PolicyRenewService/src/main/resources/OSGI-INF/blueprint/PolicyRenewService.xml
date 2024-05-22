@@ -1,0 +1,170 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<blueprint xmlns="http://www.osgi.org/xmlns/blueprint/v1.0.0"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:camel="http://camel.apache.org/schema/blueprint"
+	xmlns:cxf="http://camel.apache.org/schema/blueprint/cxf" xmlns:jaxws="http://cxf.apache.org/blueprint/jaxws"
+	xmlns:cm="http://aries.apache.org/blueprint/xmlns/blueprint-cm/v1.0.0"
+	xmlns:camelcxf="http://camel.apache.org/schema/blueprint/cxf"
+	xsi:schemaLocation="
+       http://www.osgi.org/xmlns/blueprint/v1.0.0 http://www.osgi.org/xmlns/blueprint/v1.0.0/blueprint.xsd
+       http://camel.apache.org/schema/blueprint/cxf http://camel.apache.org/schema/blueprint/cxf/camel-cxf.xsd
+       http://cxf.apache.org/blueprint/jaxws http://cxf.apache.org/schemas/blueprint/jaxws.xsd
+       http://camel.apache.org/schema/blueprint  http://camel.apache.org/schema/blueprint/camel-blueprint-2.12.0.xsd">
+	<cxf:rsServer id="PolicyRenewEndPoint" address="/policyrenewservice"
+		serviceClass="com.idep.PolicyRenewService.PolicyRenewCalcService"
+		loggingFeatureEnabled="true">
+		<cxf:providers>
+			<bean class="org.apache.cxf.rs.security.cors.CrossOriginResourceSharingFilter" />
+		</cxf:providers>
+	</cxf:rsServer>
+
+	<cm:property-placeholder persistent-id="AMQCustomProperties">
+	</cm:property-placeholder>
+
+	<bean id="jmsConnectionFactory" class="org.apache.activemq.ActiveMQConnectionFactory">
+		<property name="brokerURL" value="${amqbroker.host}:${amqbroker.port}" />
+		<property name="userName" value="${amqbroker.username}" />
+		<property name="password" value="${amqbroker.password}" />
+	</bean>
+
+	<bean id="pooledConnectionFactory" class="org.apache.activemq.pool.PooledConnectionFactory"
+		init-method="start" destroy-method="stop">
+		<property name="maxConnections" value="${amq.maxConnections}" />
+		<property name="connectionFactory" ref="jmsConnectionFactory" />
+	</bean>
+
+	<bean id="jmsConfig" class="org.apache.camel.component.jms.JmsConfiguration">
+		<property name="connectionFactory" ref="pooledConnectionFactory" />
+		<property name="concurrentConsumers" value="${amq.concurrentConsumers}" />
+		<property name="mapJmsMessage" value="${amq.mapJmsMessage}" />
+		<property name="maxConcurrentConsumers" value="${amq.maxConcurrentConsumers}" />
+		<!-- <property name="asyncConsumer" value="${amq.asyncConsumer}" /> <property 
+			name="asyncStartListener" value="${amq.asyncStartListener}" /> -->
+	</bean>
+
+	<bean id="activemq" class="org.apache.activemq.camel.component.ActiveMQComponent">
+		<property name="configuration" ref="jmsConfig" />
+	</bean>
+
+	<bean id="PolicyRenewCalcServiceImpl" class="com.idep.policyrenew.impl.service.PolicyRenewCalcServiceImpl" />
+	<bean id="BikeProposalReqProcessor" class="com.idep.policyrenewprocessor.BikeProposalReqProcessor" />
+	<bean id="CarProposalReqProcessor" class="com.idep.policyrenewprocessor.CarProposalReqProcessor" />
+	<bean id="PolicyRenewDataProcessor" class="com.idep.policyrenewprocessor.PolicyRenewDataProcessor" />
+	<bean id="PolicyRenewCalcService" class="com.idep.PolicyRenewService.PolicyRenewCalcService" />
+	<bean id="CarProposalDBReqProcessor" class="com.idep.policyrenewproposal.processor.CarProposalDBReqProcessor" />
+	<bean id="CarProposalReqDBStore" class="com.idep.policyrenewproposal.processor.CarProposalReqDBStore" />
+	<bean id="CarProposalResProcessor" class="com.idep.policyrenewproposal.processor.CarProposalResProcessor" />
+	<bean id="ExecutionTerminator"  class="com.idep.policyrenew.exception.processor.ExecutionTerminator" />
+	<bean id="BikeProposalDBReqProcessor" class="com.idep.policyrenewproposal.processor.BikeProposalDBReqProcessor" />
+	<bean id="UserPolicyDetailsUpdateProcesssor" class="com.idep.policyrenewprocessor.UserPolicyDetailsUpdateProcesssor" />
+	<bean id="PolicyRenewReqProcessor" class="com.idep.policyrenewprocessor.PolicyRenewReqProcessor" />
+	<bean id="PrepareQuoteRequest" class="com.idep.policyrenewprocessor.PrepareQuoteRequest" />
+	<bean id="RenewResponse" class="com.idep.policyrenewprocessor.RenewResponse" />
+	<bean id="UserPolicyDetailsUpdateQuoteProcessor" class="com.idep.policyrenewprocessor.UserPolicyDetailsUpdateQuoteProcessor" />
+	<bean id="HealthProposalDBReqProcessor" class="com.idep.policyrenewproposal.processor.HealthProposalDBReqProcessor" />
+	<bean id="HealthProposalReqProcessor" class="com.idep.policyrenewprocessor.HealthProposalReqProcessor" />
+	<bean id="PolicyRenewBussinessLineProcessor" class="com.idep.policyrenewprocessor.PolicyRenewBussinessLineProcessor"/>
+
+
+	
+<camelContext xmlns="http://camel.apache.org/schema/blueprint">
+  <route id="PolicyRenewServiceRoute">
+    <from uri="cxfrs:bean:PolicyRenewEndPoint"/>
+    <choice id="PolicyRenewChoice">    	  
+          <when id="RenewQuote">
+					<simple id="createRenewQuoteMethod">${header.operationName} == "getRenewQuote"</simple>
+					<multicast id="HealthQuoteResponseMSG">
+                    <pipeline>
+					<log message="request recived sendRenewQuote : ${body}"/>
+					<bean ref="PolicyRenewCalcServiceImpl" method="getRenewProposalData" id="PolicyRenewCalcServiceImpl"/>
+        			<process ref="PolicyRenewReqProcessor" id="PolicyRenewReqProcessorClass" />
+					<choice>
+						<when>
+							<simple>${header.isQuotePerform} == "Y"</simple>
+							<process ref="PrepareQuoteRequest" id="PrepareQuoteRequestClass" />
+							<process ref="UserPolicyDetailsUpdateQuoteProcessor" id="UserPolicyDetailsUpdateQuoteProcessorClass" />
+							<process ref="PolicyRenewBussinessLineProcessor" id="PolicyRenewBussinessLineProcessorClass" />
+							<to uri="direct:renewProposalCreateRequest" />    
+						</when>
+					</choice>
+					<process ref="RenewResponse" id="RenewResponseClass" />
+		           </pipeline>
+		   </multicast>
+		   </when> 
+    </choice>
+  </route>
+  
+  <route id="createRenewProposalRoute">
+			<from uri="direct:renewProposalCreateRequest" />
+			<choice>
+						<when>
+          				  	<simple>${header.LOB} == "Bike"</simple>
+            			  	<bean ref="BikeProposalReqProcessor" id="BikeProposalReqProcessorClass"/>
+            			  	<to uri="direct:bikeProposalCreateRequest" />   
+          			 	</when>
+          			 	<when>
+            			  	<simple>${header.LOB} == "Car"</simple>
+            		 	  	<bean ref="CarProposalReqProcessor" id="CarProposalReqProcessorClass"/>
+           			 	  	<to uri="direct:carProposalCreateRequest" />        
+          			 	</when>
+          			  	<when>
+            		      	<simple>${header.LOB} == "Health"</simple>
+            		      	<bean ref="HealthProposalReqProcessor" id="HealthProposalReqProcessorClass"/>
+           			      	<to uri="direct:healthProposalCreateRequest" />        
+          			 	</when>
+					</choice>
+	</route>
+  
+	<route id="createCarProposalRoute">
+			<from uri="direct:carProposalCreateRequest" />
+			<process ref="CarProposalDBReqProcessor" id="CarProposalDBReqProcessorBASE" />
+			<to pattern="InOut" uri="xpathmapper://xpathmapdata" id="CarXPathMapperBASE" />
+			<process ref="CarProposalReqDBStore" id="CarProposalReqDBStoreBASE" />
+			<log message="Successfully stored new Car proposal Id"/>
+			<process ref="UserPolicyDetailsUpdateProcesssor" id="UserPolicyDetailsUpdateProcesssor" />
+			<choice>
+				<when>
+					<simple>${header.isPolicyDetailsUpdated} == "Y"</simple>
+					<log message="Successfully stored message in RenewalQ : ${body} "/>
+					<to pattern="InOnly" uri="activemq:queue:RenewalQ" id="sendPolicyRenewalDetailstoiMAT1" />
+				</when>
+			</choice>
+			<process ref="CarProposalResProcessor" id="CarProposalResProcessorBASE" />
+	</route>
+		
+	<route id="createBikeProposalRoute">
+			<from uri="direct:bikeProposalCreateRequest" />
+			<process ref="BikeProposalDBReqProcessor" id="BikeProposalDBReqProcessorBASE" />
+			<to pattern="InOut" uri="xpathmapper://xpathmapdata" id="BikeXPathMapperBASE" />
+			<process ref="CarProposalReqDBStore" id="BikeProposalReqDBStoreBASE" />
+			<log message="Successfully stored new Bike proposal Id"/>
+			<process ref="UserPolicyDetailsUpdateProcesssor" id="UserPolicyDetailsUpdateProcesssor1" />
+			<choice>
+				<when>
+					<simple>${header.isPolicyDetailsUpdated} == "Y"</simple>
+					<log message="Successfully stored message in RenewalQ: ${body}"/>
+					<to pattern="InOnly" uri="activemq:queue:RenewalQ" id="sendPolicyRenewalDetailstoiMAT2" />
+				</when>
+			</choice>
+			<process ref="CarProposalResProcessor" id="BikeProposalResProcessorBASE" />
+	</route>
+  
+  	<route id="createHealthProposalRoute">
+			<from uri="direct:healthProposalCreateRequest" />
+			<log message="Health proposal request sent to database" />
+			<process ref="HealthProposalDBReqProcessor" id="HealthProposalDBReqProcessorBASE" />
+			<to pattern="InOut" uri="xpathmapper://xpathmapdata" id="Policies365XPathMapperBASE" />
+			<process ref="CarProposalReqDBStore" id="HealthProposalReqDBStoreBASE" />
+			<log message="Successfully stored new Health proposal Id"/>
+			<process ref="UserPolicyDetailsUpdateProcesssor" id="UserPolicyDetailsUpdateProcesssor2" />
+			<choice>
+				<when>
+					<simple>${header.isPolicyDetailsUpdated} == "Y"</simple>
+					<log message="Successfully stored message in RenewalQ: ${body}"/>
+					<to pattern="InOnly" uri="activemq:queue:RenewalQ" id="sendPolicyRenewalDetailstoiMAT3" />
+				</when>
+			</choice>
+			<process ref="CarProposalResProcessor" id="HealthProposalResProcessorBASE" />
+		</route>
+</camelContext>
+
+</blueprint>

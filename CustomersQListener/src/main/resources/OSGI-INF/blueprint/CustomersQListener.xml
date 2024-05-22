@@ -1,0 +1,124 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<blueprint xmlns="http://www.osgi.org/xmlns/blueprint/v1.0.0"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:camel="http://camel.apache.org/schema/blueprint"
+	xmlns:cxf="http://camel.apache.org/schema/blueprint/cxf" xmlns:jaxws="http://cxf.apache.org/blueprint/jaxws"
+	xmlns:cm="http://aries.apache.org/blueprint/xmlns/blueprint-cm/v1.0.0"
+	xmlns:camelcxf="http://camel.apache.org/schema/blueprint/cxf"
+	xsi:schemaLocation="
+       http://www.osgi.org/xmlns/blueprint/v1.0.0 http://www.osgi.org/xmlns/blueprint/v1.0.0/blueprint.xsd
+       http://camel.apache.org/schema/blueprint/cxf http://camel.apache.org/schema/blueprint/cxf/camel-cxf.xsd
+       http://cxf.apache.org/blueprint/jaxws http://cxf.apache.org/schemas/blueprint/jaxws.xsd
+       http://camel.apache.org/schema/blueprint  http://camel.apache.org/schema/blueprint/camel-blueprint-2.12.0.xsd">
+
+	<cxf:rsServer id="CustomerQEndPoint" address="/policycustomer"
+		serviceClass="com.idep.customer.service.CustomerQService"
+		loggingFeatureEnabled="true">
+		<cxf:providers>
+			<bean
+				class="org.apache.cxf.rs.security.cors.CrossOriginResourceSharingFilter" />
+		</cxf:providers>
+	</cxf:rsServer>
+	<bean id="myDeadLetterErrorHandler" class="org.apache.camel.builder.DeadLetterChannelBuilder">
+		<property name="deadLetterUri" value="activemq:queue:DLQ" />
+		<property name="redeliveryPolicy" ref="myRedeliveryPolicyConfig" />
+	</bean>
+
+	<bean id="myRedeliveryPolicyConfig" class="org.apache.camel.processor.RedeliveryPolicy">
+		<property name="maximumRedeliveries" value="100" />
+		<property name="redeliveryDelay" value="3000000" />
+		<property name="asyncDelayedRedelivery" value="true" />
+		<property name="retryAttemptedLogLevel" value="WARN" />
+	</bean>
+
+	<cm:property-placeholder persistent-id="LeadsQProperties">
+	</cm:property-placeholder>
+
+	<bean id="jmsConnectionFactory" class="org.apache.activemq.ActiveMQConnectionFactory">
+		<property name="brokerURL" value="${amqbroker.host}:${amqbroker.port}" />
+		<property name="userName" value="${amqbroker.username}" />
+		<property name="password" value="${amqbroker.password}" />
+	</bean>
+
+	<bean id="pooledConnectionFactory" class="org.apache.activemq.pool.PooledConnectionFactory"
+		init-method="start" destroy-method="stop">
+		<property name="maxConnections" value="${amq.maxConnections}" />
+		<property name="connectionFactory" ref="jmsConnectionFactory" />
+	</bean>
+
+	<bean id="jmsConfig" class="org.apache.camel.component.jms.JmsConfiguration">
+		<property name="connectionFactory" ref="pooledConnectionFactory" />
+		<property name="concurrentConsumers" value="${amq.concurrentConsumers}" />
+		<property name="mapJmsMessage" value="${amq.mapJmsMessage}" />
+		<property name="maxConcurrentConsumers" value="${amq.maxConcurrentConsumers}" />
+		<property name="deliveryPersistent" value="false" />
+		<property name="acknowledgementModeName" value="CLIENT_ACKNOWLEDGE" />
+	</bean>
+
+	<bean id="activemq" class="org.apache.activemq.camel.component.ActiveMQComponent">
+		<property name="configuration" ref="jmsConfig" />
+		<property name="transacted" value="${amq.transacted}" />
+		<property name="cacheLevelName" value="${amq.cacheLevelName}" />
+	</bean>
+
+	<bean id="CustomersQueueListener" class="com.idep.queue.listener.CustomersQueueListener" />
+	<bean id="OfflineCustomerQListener" class="com.idep.queue.listener.OfflineCustomerQListener" />
+	
+	<bean id="CustomersRequestProcessor" class="com.idep.customer.reqprocessor.CustomerRequestProcessor" />
+	<bean id="CustomerMessageProcessor" class="com.idep.customer.reqprocessor.CustomerMessageProcessor" />
+	<bean id="OfflineCustomerReqProcessor" class="com.idep.customer.reqprocessor.OfflineCustomerReqProcessor" />
+	<bean id="OfflineCustomerCreation" class="com.idep.customer.reqprocessor.OfflineCustomerCreation" />
+	<bean id="CustomerQService" class="com.idep.customer.service.CustomerQService" />
+	<!-- <bean id="CrossSellLeadProcessor" class="com.idep.customer.reqprocessor.CrossSellLeadProcessor"/> -->
+
+	<bean id="CustomerCreationQshutdownStrategy" class="org.apache.camel.impl.DefaultShutdownStrategy">
+		<property name="timeout" value="30" />
+	</bean>
+
+	<camelContext id="CustomerQContext" trace="false"
+		threadNamePattern="CustomerQReq:#counter#" xmlns="http://camel.apache.org/schema/blueprint">
+		<route id="RouteCreateCustomerService">
+			<from uri="cxfrs:bean:CustomerQEndPoint" />
+			<bean ref="CustomerQService" method="collectCustomerData" id="BeanCustomerQ" />
+			<log id="pushCustomerlog" message="Customer request recived : ${body}" />
+			<process ref="CustomerMessageProcessor" id="CustomerMsgProcessor" />
+			<log id="CustomerMsgLog" message="CustomerMessageProcessor after : ${body}" />
+			<choice>
+				<when>
+					<simple>${header.isOffline} == "N"</simple>
+					<bean ref="CustomersRequestProcessor" id="CustomersRequestProcessorService" />
+				</when>
+				<when>
+					<simple>${header.isOffline} == "Y"</simple>
+					<bean ref="OfflineCustomerReqProcessor" id="OfflineCustomerReq" />
+					<to pattern="InOnly" uri="activemq:queue:OfflineCustomerQ" id="OfflineCustomerQ" />
+				</when>
+			</choice>
+			<!-- <process ref="CrossSellLeadProcessor" id="CrossSellLeadProcessorClass"/> -->
+		</route>
+		<route id="RouteCreateCustomerQListener">
+			<from uri="activemq:queue:CustomerCreationQueue" id="FromCreateCustomerQ">
+				<description />
+			</from>
+			<bean ref="CustomersQueueListener" method="onMessage" id="BeanCreateLeadQ" />
+			<log id="createCustomerlog" message="Create Customer request recived : ${body}" />
+			<multicast id="CustomerAndCrossSellQ">
+				<pipeline>
+					<process ref="CustomersRequestProcessor" id="CustomersRequestProcessorServiceQ" />
+				</pipeline>
+				<!-- <pipeline> Cross-Sell Operation <log id="CrossSelllog" message="Cross 
+					Sell request recived : ${body}" /> <process ref="CrossSellLeadProcessor" 
+					id="CrossSellLeadProcessorClassQ" /> </pipeline> -->
+			</multicast>
+			<log message="GOT CUSTOMER" />
+		</route>
+		<route id="RouteOfflineCustomerQListener">
+			<from uri="activemq:queue:OfflineCustomerQ" id="FromOfflineCustomerQ">
+				<description />
+			</from>
+			<bean ref="OfflineCustomerQListener" method="onMessage" id="OfflineCustomerQListen" />
+			<log id="OfflineCustomerlog" message="Create Offline Customer request recived : ${body}" />
+			<process ref="OfflineCustomerCreation" id="OfflineCustomerCreate" />
+			<log message="GOT OFFLINE CUSTOMER" />
+		</route>
+	</camelContext>
+</blueprint>

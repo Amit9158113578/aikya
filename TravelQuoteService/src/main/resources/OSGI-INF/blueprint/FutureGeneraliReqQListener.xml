@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<blueprint xmlns="http://www.osgi.org/xmlns/blueprint/v1.0.0"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:cxf="http://camel.apache.org/schema/blueprint/cxf"
+	xsi:schemaLocation="
+       http://www.osgi.org/xmlns/blueprint/v1.0.0 http://www.osgi.org/xmlns/blueprint/v1.0.0/blueprint.xsd
+        http://camel.apache.org/schema/blueprint/cxf http://camel.apache.org/schema/blueprint/cxf/camel-cxf.xsd
+       http://camel.apache.org/schema/blueprint http://camel.apache.org/schema/blueprint/camel-blueprint.xsd">
+	<camelContext threadNamePattern="FutureTravelThread:#counter#"
+		id="FutureGeneraliTravelReqQContext" xmlns="http://camel.apache.org/schema/blueprint">
+	<dataFormats>
+   	 	<xmljson forceTopLevelObject="true" skipWhitespace="true" trimSpaces="true" skipNamespaces="true" removeNamespacePrefixes="true" expandableProperties="PHJ5 PHJ6 PHL2" id="FUTUREGENjsonxml"/>
+    	<xmljson forceTopLevelObject="true" skipWhitespace="true" trimSpaces="true" skipNamespaces="true" removeNamespacePrefixes="true" id="FTUREGENxmljson"/>
+    </dataFormats>
+		<onException>
+			<exception>java.net.ConnectException</exception>
+			<exception>java.net.SocketTimeoutException</exception>
+			<exception>java.net.SocketException</exception>
+			<handled>
+				<constant>true</constant>
+			</handled>
+			<log message="Future TRAVEL quote service seems to be down or not responded within stipulated time frame" />
+			<process ref="ExceptionMQMSGProcessor" customId="true"
+				id="FUTURETravelExceptionMQMSGProcessor" />
+			<to pattern="InOnly"
+				uri="activemq:queue:FutureGeneraliTravelResQ?timeToLive=120000&amp;includeSentJMSMessageID=true" />
+		</onException>
+		<onException>
+			<exception>org.apache.camel.component.http4.HttpOperationFailedException</exception>
+			<handled>
+				<constant>true</constant>
+			</handled>
+			<log message="Future TRAVEL quote service HttpOperationFailed : check input values provided " />
+			<process ref="ExceptionMQMSGProcessor" customId="true" id="FUTURETravelHTTPExcpMQProcessor" />
+			<to pattern="InOnly" uri="activemq:queue:FutureGeneraliTravelResQ?timeToLive=120000&amp;includeSentJMSMessageID=true" />
+		</onException>
+		<onException>
+		    <exception>com.idep.travelquote.exception.processor.ExecutionTerminator</exception>
+		    <handled>
+		      <constant>true</constant>
+		    </handled>
+		    <log message="Future TRAVEL quote service Terminated "/>
+		    <process ref="ExceptionMQMSGProcessor" customId="true" id="FUTURETravelExceptionQuoteProcessor"/>
+		    <to pattern="InOnly" uri="activemq:queue:FutureGeneraliTravelResQ?timeToLive=120000&amp;includeSentJMSMessageID=true"/>
+	  </onException>
+	 
+	<route id="FutureGeneraliTravelReqQListener">
+	<from uri="activemq:queue:FutureGeneraliTravelReqQ" id="FromFutureGeneraliTravelReqQ">
+	<description/>
+	</from>
+	<bean ref="P365TravelReqQListener" method="onMessage" id="FutureGeneraliTravelReqQBean"/>
+	<process ref="TravelRequestQProcessor" id="FUTUREGENTravelReqQProcessor"/>
+	<process ref="TravelQuoteLoggerProcessor" id="TravelQuoteLoggerProcessor"/>
+	<process ref="CalculateMemberCountProcessor" id="BhartiAxaMemberCountProcessor"/>
+	<process ref="TravelTravellersDobCalProcessor" id="FutureGeneraliTravelTravellersDobCalProcessor"/>
+    <process ref="FutureGeneraliSOAPReqProcessor" id="FutuGenSOAPReqProcessor"/>
+    <to pattern="InOut" uri="xpathmapper://xpathmapdata" id="FutureGenTravelXPathMapper"/>
+	<process ref="FutureGeneraliInputRequestProcessor" id="FutureGeneraliInputRequestProcessor"/>
+	<process ref="RequestTransformSaver" id="FutureGenTransReqSave"/>
+    <unmarshal ref="FUTUREGENjsonxml" id="FutureGenJSONTOXML"/>
+    <process ref="XMLCharEmitter" id="FutureGenXMLCharEmitter"/>
+    <process ref="FutureGenSoapReqFormatter" id="FutureGenSoapReqFormatter"/>
+    <process ref="CarrierQuoteServiceReqLogger" id="CarrierQuoteServiceReqLogger"/>
+    <to pattern="InOut" uri="webservconsumer://invoke" id="FutuGeneTravelQUOTEURL"/>
+    <process ref="FutureSoapResFormatter" id="FutureSoapResFormatter"/>
+    <marshal ref="FTUREGENxmljson" id="FutureGeneXMLTOJSON"/>
+    <process ref="FutureGenResTransformer" id="FutureGenResTransformer"/>
+    <process ref="ExternalTravelServiceRespHandler" id="FutureTravelServiceRespHandler"/>
+    <to pattern="InOut" uri="xpathmapper://xpathmapdata" id="FutureGenTravelXPathMapper"/>
+    <process ref="TravelQuoteResponseProcessor" id="TravelQuoteResponseProcessor"/>
+         <multicast id="FUTUREGENTravelQuoteResponseMSG">
+          <pipeline>
+            <process ref="TravelQuoteDBSender" id="FutureTravelQuoteDBSender"/>
+            <to pattern="InOnly" uri="activemqSecondary:queue:TravelQuoteResultsQ"/>
+          </pipeline>
+          <pipeline>
+          	<process ref="CarrierQuoteServiceResLogger" id="futureGenCarrierQuoteServiceResLogger"/>
+            <process ref="TravelMQMsgProcessor" id="FutureGenrocessorErrorQ"/>
+            <!-- <wireTap uri="activemqSecondary:queue:FutureGeneraliTravelResQ?includeSentJMSMessageID=true"/> -->
+            <to pattern="InOnly" uri="activemq:queue:FutureGeneraliTravelResQ?timeToLive=120000&amp;includeSentJMSMessageID=true"/>
+          </pipeline>
+    </multicast>
+  </route>
+</camelContext>
+
+</blueprint>
+	  
+	  
+	  

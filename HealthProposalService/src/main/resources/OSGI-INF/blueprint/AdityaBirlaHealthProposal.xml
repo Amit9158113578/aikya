@@ -1,0 +1,190 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<blueprint xmlns="http://www.osgi.org/xmlns/blueprint/v1.0.0"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:cxf="http://camel.apache.org/schema/blueprint/cxf"
+	xsi:schemaLocation="
+       http://www.osgi.org/xmlns/blueprint/v1.0.0 http://www.osgi.org/xmlns/blueprint/v1.0.0/blueprint.xsd
+        http://camel.apache.org/schema/blueprint/cxf http://camel.apache.org/schema/blueprint/cxf/camel-cxf.xsd
+       http://camel.apache.org/schema/blueprint http://camel.apache.org/schema/blueprint/camel-blueprint.xsd">
+
+	<cxf:rsServer id="ABHIHealthProposalEndpoint" address="/adityabirlahealthproposalservice"
+		serviceClass="com.idep.proposal.service.ProposalSubmitService"
+		loggingFeatureEnabled="true">
+		<cxf:providers>
+			<bean
+				class="org.apache.cxf.rs.security.cors.CrossOriginResourceSharingFilter" />
+		</cxf:providers>
+	</cxf:rsServer>
+
+	<bean id="ABHIHealthProposalhutdownStrategy" class="org.apache.camel.impl.DefaultShutdownStrategy">
+		<property name="timeout" value="30" />
+	</bean>
+
+	<camelContext streamCache="true" threadNamePattern="HLTHPROPABHI"
+		id="ABHIHealthProposalContext" xmlns="http://camel.apache.org/schema/blueprint">
+		<dataFormats>
+			<xmljson forceTopLevelObject="true" skipWhitespace="true"
+				trimSpaces="true" skipNamespaces="true" removeNamespacePrefixes="true"
+				id="AdityaBirlaHealthproposaljsonxml" />
+		</dataFormats>
+		<onException>
+			<exception>java.net.SocketTimeoutException</exception>
+			<exception>java.net.SocketException</exception>
+			<handled>
+				<constant>true</constant>
+			</handled>
+			<log message="Aditya Birla Health proposal service seems to be down" />
+			<process ref="ProposalExceptionProcessor" customId="true"
+				id="ABHIHealthPropExcepProcessor" />
+		</onException>
+		<onException>
+			<exception>com.idep.policy.exception.processor.ExecutionTerminator</exception>
+			<exception>java.lang.Exception</exception>
+			<handled>
+				<constant>true</constant>
+			</handled>
+			<log message="Aditya Birla Health proposal service Exception occure" />
+			<process ref="ProposalExceptionProcessor" customId="true"
+				id="ABHIOtherHealthPropExcepProcessor" />
+		</onException>
+		<route id="ABHIProposalSubmitterRoute">
+			<from uri="cxfrs:bean:ABHIHealthProposalEndpoint" />
+			<choice id="ABHIHealthPolicyProposalDecision">
+				<when id="ABHIHealthProposalReq">
+					<simple>${header.operationName} == "submitHealthProposal"</simple>
+					<log message="Aditya Birla Health Proposal Creation initiated" />
+					<bean ref="ProposalSubmitServiceImpl" method="submitProposal"
+						id="ABHIHealthProposalSubmit" />
+					<process ref="ProposalReqProcessor" id="ABHIHealthProposalReqProcessor" />
+					<process ref="HealthProposalReqLogProcessor" id="ABHIHealthProReqLogProcessor" />
+					<process ref="HealthPolicyLogProcessor" id="ABHIHealthLogProcessor1" />
+
+					<!-- <when id="baseEnvStatusTrue">
+						<simple>${header.baseEnvStatus} == "true"</simple>
+						<log message="Base env status true" />
+						<to uri="direct:proposalCreateRequest" />
+					</when>
+					
+					<when id="baseEnvStatusFalse">
+						<simple>${header.baseEnvStatus} == "false"</simple> -->
+						<log message="Base env status false" />
+						<multicast id="ProposalMessageSender">
+							<pipeline id="ProposalQMessage">
+								<to uri="direct:proposalCreateRequest" />
+							</pipeline>
+							<pipeline>
+								<process ref="ABHIMemberCodeProcessor" id="ABHIMemberCodeReqProcessor" />
+								<process ref="CarrierDataLoader" id="CarrierDataLoader" />
+								<process ref="HealthPolicyLogProcessor" id="ABHIHealthLogProcessor2" />
+								<to pattern="InOut" uri="xpathmapper://xpathmapdata" id="ABHIHealthXPathMapper" />
+								<process ref="ABHIMemberPEDProcessor" id="ABHIMemberPEDProcessor" />
+								<multicast id="ProposalMessageSenderProcessor">
+									<pipeline id="ABHISaveProposalReq">
+										<process ref="ABHIProposalReqStoreProcessor" id="ABHIProposalReqStorePr" />
+										<log
+											message="Aditya Birla Health Full proposal request Stored in to database" />
+									</pipeline>
+									<pipeline id="ABHISaveProposal">
+										<process ref="HealthProposalServiceReqLogProcessor"
+											id="ABHIServiceReqLogger" />
+											<process ref="HealthPolicyLogProcessor" id="ABHIHealthLogProcessor3" />
+										<to pattern="InOut" uri="webservconsumer://invoke" id="ABHIHealthURLCall" />
+										<process ref="HealthProposalServiceResLogProcessor"
+											id="ABHIServiceResLogProcessor" />
+										<process ref="ABHIProposalResValidator" id="ABHIProposalresponseValidator" />
+										<process ref="ProposalResHandler" id="ABHIHealthProposalResHandler" />
+										<to pattern="InOut" uri="mapper://mapdata" id="ProposalReqMapper" />
+										<process ref="HealthProposalResProcessor" id="ABHIHealthProposalResProcessor" />
+										<process ref="ProposalReqDBStore" id="ABHIHealthProposalReqDBStore" />
+										<process ref="ProposalResProcessor" id="ABHIHealthProposalResProcessor" />
+										<bean ref="ProposalSubmitServiceImpl" method="submitProposal"
+											id="ABHIHealthProposalResponse" />
+										<marshal>
+											<json prettyPrint="true" library="Jackson" />
+										</marshal>
+									</pipeline>
+								</multicast>
+							</pipeline>
+						</multicast>
+					<!-- </when> -->
+				</when>
+				<when id="ABHIHealthPolicyCreator">
+					<simple>${header.operationName} == "createPolicy"</simple>
+					<bean ref="PolicySubmitServiceImpl" method="submitPolicy"
+						id="ABHIHealthPolicyServiceRequest" />
+					<process ref="HealthPolicyLogProcessor" id="ABHIHealthPolicyLogProcessor" />
+					<multicast>
+						<pipeline>
+							<process ref="PaymentResponseUpdateProcessor" id="ABHIHealthPaymentResProcessor" />
+							<process ref="ProposalReqDBStore" id="ABHIHealthPolicyResDBStore" />
+							<log message="ABHI Payment response added in database" />
+						</pipeline>
+						<pipeline>
+						<log message="ABHI Payment response Send for validation" />
+							<process ref="PaymentResponseValidator" id="ReligarePaymentResValidator" />
+							<choice id="ABPaymentResponse">
+						      <when id="ABPaymentResponseReq">
+							    <simple>${header.reqFlag} == "True"</simple>
+							<process ref="HealthPolicyReqProcessor" id="ABHICreatePolicyReqProcessor" />
+							<process ref="ABHIProposalPolicyProcessor" id="ABHIHealthPolicysProcessor" />
+							<process ref="HealthPolicyLogProcessor" id="ABHIHealthLogProcessor4" />
+							<to pattern="InOut" uri="xpathmapper://xpathmapdata" id="ABHIReqXPathMapper" />
+							<process ref="HealthPolicyServiceReqLog" id="ABHIHealthPolicyServiceReqLog" />
+							<to pattern="InOut" uri="webservconsumer://invoke" id="ABHIPolicyURL" />
+							<log message="ABHI After ABHI PolicyUrl: ${body}" />
+							<process ref="HealthPolicyServiceResLog" id="ABHIHealthPolicyServiceResLog" />
+							<process ref="ABHIProposalResValidator" id="ABHIProposalresponseValidator" />
+							<process ref="CarrierPolicyResponseProcessor" id="CarrierPolicyResponseProcessor" />
+							<to pattern="InOut" uri="mapper://mapdata" id="HDFCPolicyReqMapper" />
+							<log message="ABHI mapper policy Request transformed Body  : ${body}" />
+							<process ref="HealthPolicyReqHandler" id="ABHIPolicyReqHandler" />
+							<process ref="ProposalReqDBStore" id="ABHIProposalReqDBStore" />
+							<process ref="HealthPolicyResHandler" id="ABHIPolicyRespHandler" />
+							<to pattern="InOut" uri="mapper://mapdata" id="ABHIPolicyResMapperUI" />
+							<log message="ABHI mapper policy after mapper " />
+							<multicast>
+								<pipeline>
+									<process ref="HealthPolicyReqHandler" id="ABHIPolicyUSERProfileReqHandler" />
+									<process ref="UserProfileReqProcessor" id="ABHIhealthUserProfileReqProcessor" />
+								</pipeline>
+								<pipeline>
+									<process ref="HealthPolicyResLogProcessor" id="ABHIHealthPolicyResLogProcessor" />
+									<process ref="HealthPolicyReqHandler" id="ABHIHealthPolicyResHandler" />
+									<process ref="HealthPolicyResProcessor" id="ABHIHealthPolicyResProcessor" />
+									<process ref="HealthPolicyLogProcessor" id="ABHIHealthLogProcessor" />
+									<bean ref="PolicySubmitServiceImpl" method="sendMessage"
+										id="ABHIHealthPolicyServiceResponse" />
+									<log message="ABHI CREATE Policy Process Complted" />
+									<!-- <marshal> <json prettyPrint="true" library="Jackson"/> </marshal> -->
+								</pipeline>
+							</multicast>
+							</when>
+							   <when id="ABProposalUPDTError">
+									<simple>${header.reqFlag} == "False"</simple>
+									<log message="Aditya birla payment error " />
+									<bean ref="PolicySubmitServiceImpl" method="sendMessage" />
+							</when>
+						   </choice>
+						</pipeline>
+					</multicast>
+
+				</when>
+			</choice>
+		</route>
+		<route id="createProposalRoute">
+			<from uri="direct:proposalCreateRequest" />
+			<log message="Aditya Birla Health proposal request sent to database 2" />
+			<process ref="HealthProposalDBReqProcessor" id="ABHIErgoHealthProposalDBReqProcessorBASE" />
+			<process ref="HealthPolicyLogProcessor" id="ABHIHealthLogProcessor5" />
+			<to pattern="InOut" uri="xpathmapper://xpathmapdata" id="ABHIHealthMapperBASE" />
+			<process ref="ProposalReqDBStore" id="ABHIHealthProposalReqDBStoreBASE" />
+			<log message="Aditya Birla Health proposal request Stored in to database" />
+			<process ref="ProposalResProcessor" id="ABHIHealthProposalResProcessorBASE" />
+			<bean ref="ProposalSubmitServiceImpl" method="submitProposal"
+				id="ABHIHealthProposalResponseBASE" />
+			<marshal>
+				<json prettyPrint="true" library="Jackson" />
+			</marshal>
+		</route>
+	</camelContext>
+
+</blueprint>

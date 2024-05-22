@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<blueprint xmlns="http://www.osgi.org/xmlns/blueprint/v1.0.0"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xmlns:cxf="http://camel.apache.org/schema/blueprint/cxf"
+       xsi:schemaLocation="
+       http://www.osgi.org/xmlns/blueprint/v1.0.0 http://www.osgi.org/xmlns/blueprint/v1.0.0/blueprint.xsd
+        http://camel.apache.org/schema/blueprint/cxf http://camel.apache.org/schema/blueprint/cxf/camel-cxf.xsd
+       http://camel.apache.org/schema/blueprint http://camel.apache.org/schema/blueprint/camel-blueprint.xsd">
+
+ <camelContext threadNamePattern="FutureIndiaLifeThread:#counter#" id="FutureIndiaLifeReqQContext" xmlns="http://camel.apache.org/schema/blueprint">
+ <route id="FutureIndiaLifeReqQListener">
+    <from uri="activemq:queue:FutureGenIndiaLifeReqQ" id="FromFutureIndiaLifeReqQ">
+      <description/>
+    </from>
+    <bean ref="P365LifeReqQListener" method="onMessage" id="FutureIndiaLifeReqQBean"/>
+    <process ref="LifeRequestQProcessor" id="FutureIndiaLifeReqQProcessor"/>
+    <process ref="LifeQuoteLoggerProcessor" id="FututreIndiaLifeLoggerProcessor1"/>
+    
+    <process ref="LifeDroolReqFromProcessor" id="FutureIndiaDroolReqProcessor"/>
+    <process ref="LifeQuoteLoggerProcessor" id="FututreIndiaLifeLoggerProcessor2"/>
+    
+    <choice id="FutureIndiaLifeQuoteDecision">
+      <when id="FutureIndiaLifeDroolReq">
+        <simple>${header.reqFlag} == "True"</simple>
+        <log message="FutureIndia LifeQuote : quoteURL : ${header.quoteURL}  header quoteType ${header.quoteType} : message body :${body}  "/>
+        <recipientList>
+          <simple>${header.quoteURL}</simple>
+        </recipientList>
+        <log message="FutureIndia LifeQuote drool response : ${body}"/>
+        <bean ref="LifeQuoteResponse" method="sendQuoteResponse"/>
+        <process ref="LifeDroolResponseProcessor" id="FutureIndiaDroolResFormProcessor"/>
+        <process ref="LifeQuoteLoggerProcessor" id="FututreIndiaLifeLoggerProcessor3"/>
+        
+        <bean ref="LifeQuoteResponse" method="sendQuoteResponse"/>
+        <multicast id="FUTUREGENLifeQuoteResponseMSG">
+          <pipeline>
+            <log message="request/response sent to save FUTUREGEN LIFE quote in database"/>
+            <process ref="LifeQuoteDBSender" id="FUTUREGENLIFELifeQuoteDBSender"/>
+            <process ref="LifeQuoteLoggerProcessor" id="FututreIndiaLifeLoggerProcessor4"/>
+            
+            <to pattern="InOnly" uri="activemq:queue:LifeQuoteResultsQ"/>
+          </pipeline>
+          <pipeline>
+        	<process ref="LifeMQMsgProcessor" id="FutureIndiaLifeMQProcessor"/>
+        	<process ref="LifeQuoteLoggerProcessor" id="FututreIndiaLifeLoggerProcessor5"/>
+        	
+        	<wireTap uri="activemqSecondary:queue:FutureGenIndiaLifeResQ?includeSentJMSMessageID=true"/>
+       		<to pattern="InOnly" uri="activemq:queue:FutureGenIndiaLifeResQ?timeToLive=120000&amp;includeSentJMSMessageID=true"/>
+        	<log message="FutureIndiaLifeResQ JMS Message Id from Q : ${header.JMSMessageID}"/>
+          </pipeline>
+        </multicast>
+      </when>
+      <when id="FutureIndiaLifeReqError">
+        <simple>${header.reqFlag} == "False"</simple>
+        <bean ref="LifeQuoteResponse" method="requestError"/>
+        <process ref="LifeMQMsgProcessor" id="FutureIndiaLifeMQErrorProcessor"/>
+        <process ref="LifeQuoteLoggerProcessor" id="FututreIndiaLifeLoggerProcessor6"/>
+        
+        <wireTap uri="activemqSecondary:queue:FutureGenIndiaLifeResQ?includeSentJMSMessageID=true"/>
+        <to pattern="InOnly" uri="activemq:queue:FutureGenIndiaLifeResQ?timeToLive=120000&amp;includeSentJMSMessageID=true"/>
+        <log message="FutureIndiaLifeResQ JMS Message Id from Q : ${header.JMSMessageID}"/>        
+      </when>
+    </choice>
+  </route>
+  </camelContext>
+
+</blueprint>

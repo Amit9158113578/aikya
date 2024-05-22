@@ -1,0 +1,118 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<blueprint xmlns="http://www.osgi.org/xmlns/blueprint/v1.0.0"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xmlns:camel="http://camel.apache.org/schema/blueprint"
+       xmlns:cxf="http://camel.apache.org/schema/blueprint/cxf"
+       xmlns:jaxws="http://cxf.apache.org/blueprint/jaxws"
+       xmlns:cm="http://aries.apache.org/blueprint/xmlns/blueprint-cm/v1.0.0"
+       xmlns:camelcxf="http://camel.apache.org/schema/blueprint/cxf"
+       xsi:schemaLocation="
+       http://www.osgi.org/xmlns/blueprint/v1.0.0 http://www.osgi.org/xmlns/blueprint/v1.0.0/blueprint.xsd
+       http://camel.apache.org/schema/blueprint/cxf http://camel.apache.org/schema/blueprint/cxf/camel-cxf.xsd
+       http://cxf.apache.org/blueprint/jaxws http://cxf.apache.org/schemas/blueprint/jaxws.xsd
+       http://camel.apache.org/schema/blueprint  http://camel.apache.org/schema/blueprint/camel-blueprint-2.12.0.xsd">
+
+
+<bean id="myDeadLetterErrorHandler" class="org.apache.camel.builder.DeadLetterChannelBuilder">
+    <property name="deadLetterUri" value="activemq:queue:DLQ"/>
+    <property name="redeliveryPolicy" ref="myRedeliveryPolicyConfig"/>
+</bean>
+ 
+<bean id="myRedeliveryPolicyConfig" class="org.apache.camel.processor.RedeliveryPolicy">
+    <property name="maximumRedeliveries" value="2"/>
+    <property name="redeliveryDelay" value="5000"/>
+    <property name="asyncDelayedRedelivery" value="true"/>
+    <property name="retryAttemptedLogLevel" value="WARN"/>
+</bean>
+
+<cm:property-placeholder persistent-id="AMQCustomProperties"> 
+ </cm:property-placeholder> 
+
+<bean id="jmsConnectionFactory"
+   class="org.apache.activemq.ActiveMQConnectionFactory">
+   <property name="brokerURL" value="${amqbroker.host}:${amqbroker.port}" />
+   <property name="userName" value="${amqbroker.username}"/>
+   <property name="password" value="${amqbroker.password}"/>
+</bean>
+ 
+<bean id="pooledConnectionFactory"
+   class="org.apache.activemq.pool.PooledConnectionFactory" init-method="start" destroy-method="stop">
+   <property name="maxConnections" value="${amq.maxConnections}" />
+   <property name="connectionFactory" ref="jmsConnectionFactory" />
+</bean>
+ 
+<bean id="jmsConfig"
+   class="org.apache.camel.component.jms.JmsConfiguration">
+   <property name="connectionFactory" ref="pooledConnectionFactory"/>
+   <property name="concurrentConsumers" value="${amq.concurrentConsumers}"/>
+   <property name="mapJmsMessage" value="${amq.mapJmsMessage}" />
+   <property name="maxConcurrentConsumers" value="${amq.maxConcurrentConsumers}" />
+   <property name="asyncConsumer" value="${amq.asyncConsumer}" />
+   <property name="asyncStartListener" value="${amq.asyncStartListener}" />  
+</bean>
+ 
+ <bean id="activemq"
+    class="org.apache.activemq.camel.component.ActiveMQComponent">
+    <property name="configuration" ref="jmsConfig"/>
+	
+    <property name="transacted" value="${amq.transacted}"/>
+    <property name="cacheLevelName" value="${amq.cacheLevelName}" />
+</bean>
+
+<bean id="CarQuoteResultsQListener" class="com.idep.quote.result.listener.CarQuoteResultsQListener"/>
+<bean id="LifeQuoteResultsQListener" class="com.idep.quote.result.listener.LifeQuoteResultsQListener"/>
+<bean id="BikeQuoteResultsQListener" class="com.idep.quote.result.listener.BikeQuoteResultsQListener"/>
+<bean id="HealthQuoteResultsQListener" class="com.idep.quote.result.listener.HealthQuoteResultsQListener"/>
+<bean id="TravelQuoteResultsQListener" class="com.idep.quote.result.listener.TravelQuoteResultsQListener"/>
+<bean id="QuoteResultHandler" class="com.idep.quote.result.listener.QuoteResultHandler"/>
+<bean id="LeadRequestUpdateProcessor" class="com.idep.lms.reqprocess.LeadRequestUpdateProcessor"/>
+<bean id="CriticalIllnessQuoteResultsQListener" class="com.idep.quote.result.listener.CriticalIllnessQuoteResultsQListener"/>
+<bean id="PersonalAccidentResultsQListener" class="com.idep.quote.result.listener.PersonalAccidentResultsQListener"/>
+<bean id="HomeResultsQListener" class="com.idep.quote.result.listener.HomeResultsQListener"/>
+
+
+<camelContext threadNamePattern="CarQuoteResultsThread:#counter#" trace="false" id="CarQuoteResultsQContext" xmlns="http://camel.apache.org/schema/blueprint">
+  <route id="CarQuoteResultsQListener">
+    <from uri="activemq:queue:CarQuoteResultsQ" id="CarQuoteResultsQ"/>
+    
+    <bean ref="CarQuoteResultsQListener" method="onMessage" id="CarQuoteResultsListener"/>
+    
+  </route>
+  <route id="BikeQuoteResultsQListener">
+    <from uri="activemq:queue:BikeQuoteResultsQ" id="BikeQuoteResultsQ"/>
+    <bean ref="BikeQuoteResultsQListener" method="onMessage" id="BikeQuoteResultsListener"/>	
+  </route>
+  
+  <route id="LifeQuoteResultsQListener">
+    <from uri="activemq:queue:LifeQuoteResultsQ" id="LifeQuoteResultsQ"/>
+    <bean ref="LifeQuoteResultsQListener" method="onMessage" id="LifeQuoteResultsListener"/>
+  </route>
+  
+  <route id="HealthQuoteResultsQListener">
+    <from uri="activemq:queue:HealthQuoteResultsQ" id="HealthQuoteResultsQ"/>
+    <bean ref="HealthQuoteResultsQListener" method="onMessage" id="HealthQuoteResultsListener"/>
+  </route>
+    
+  <route id="TravelQuoteResultsQListener">
+    <from uri="activemq:queue:TravelQuoteResultsQ" id="TravelQuoteResultsQ"/>
+    <bean ref="TravelQuoteResultsQListener" method="onMessage" id="TravelQuoteResultsListener"/>
+  </route>
+  
+  <route id="CriticalIllnessQuoteResultsQListener">
+    <from uri="activemq:queue:CriticalIllnessQuoteResultsQ" id="CriticalIllnessQuoteResultsQ"/>
+    <bean ref="CriticalIllnessQuoteResultsQListener" method="onMessage" id="CriticalIllnessQuoteResultsListener"/>
+  </route>
+  
+  <route id="PersonalAccidentQuoteResultsQListener">
+    <from uri="activemq:queue:PersonalAccidentQuoteResultsQ" id="PersonaAccidentQuoteResultsQ"/>
+    <bean ref="PersonalAccidentResultsQListener" method="onMessage" id="PersonalAccidentResultsQListener"/>
+  </route>
+  
+  <route id="HomeQuoteResultsQListener">
+    <from uri="activemq:queue:HomeQuoteResultsQ" id="HomeQuoteResultsQ"/>
+    <bean ref="HomeResultsQListener" method="onMessage" id="HomeResultsQListener"/>
+  </route>
+  
+  
+</camelContext>
+</blueprint>

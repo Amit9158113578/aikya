@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<blueprint xmlns="http://www.osgi.org/xmlns/blueprint/v1.0.0"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xmlns:cm="http://aries.apache.org/blueprint/xmlns/blueprint-cm/v1.1.0"
+       xmlns:cxf="http://camel.apache.org/schema/blueprint/cxf"
+       xsi:schemaLocation="
+       http://www.osgi.org/xmlns/blueprint/v1.0.0 http://www.osgi.org/xmlns/blueprint/v1.0.0/blueprint.xsd
+        http://camel.apache.org/schema/blueprint/cxf http://camel.apache.org/schema/blueprint/cxf/camel-cxf.xsd
+       http://camel.apache.org/schema/blueprint http://camel.apache.org/schema/blueprint/camel-blueprint.xsd">
+ 
+
+<cxf:rsServer id="ProfessionsQuestionEndpoint" address="/professionsQueservice" serviceClass="com.idep.professions.service.ProfessionsService" loggingFeatureEnabled="true">
+<cxf:providers>
+        <bean class="org.apache.cxf.rs.security.cors.CrossOriginResourceSharingFilter" />
+</cxf:providers>
+</cxf:rsServer>
+
+
+<bean id="ProfessionsServiceImpl" class="com.idep.professions.serviceImpl.ProfessionsServiceImpl"/>
+<bean id="ProfessionsService" class="com.idep.professions.service.ProfessionsService"/>
+<bean id="GetProfessionsList" class="com.idep.professions.req.processor.GetProfessionsList"/>
+<bean id="ProfessionsResponse" class="com.idep.professions.response.ProfessionsResponse"/>
+<bean id="ProposalExceptionProcessor" class="com.idep.professions.exception.ProposalExceptionProcessor"/>
+<bean id="getProfessionQuestions" class="com.idep.professions.req.processor.getProfessionQuestions"/>
+
+<camelContext streamCache="true" id="ProfessionsQueViewContext" xmlns="http://camel.apache.org/schema/blueprint">
+
+		<onException>
+			<exception>com.idep.professions.exception.ExecutionTerminator</exception>
+			<exception>java.lang.Exception</exception>
+			<handled>
+				<constant>true</constant>
+			</handled>
+			<log message="Professional Base journey request service Exception occure" />
+			<process ref="ProposalExceptionProcessor" customId="true"
+				id="HDFCHealthPropExcepProcessor" />
+		</onException>
+		
+    
+    <route id="getProfessionsListRoute">
+    
+    <from uri="cxfrs:bean:ProfessionsQuestionEndpoint"/>
+    <log message="PBQ Profession list request recived ${body}" id="PBProfessionReq"/>
+    <choice id="professionsDecision">
+	    <when id="getProfessionsListRequest">
+	        <simple>${header.operationName} == "getProfessionsList"</simple>
+			    <process ref="GetProfessionsList" id="GetProfessionsList"/>
+			    <process ref="ProfessionsResponse" id="sendGenericResponse"/>
+			    <bean ref="ProfessionsServiceImpl" method="SendMessage" id="ProfessionsServiceImpl" /> 
+	    </when>
+	   	<when id="ProfessionsQuestionCondition">
+	        <simple>${header.operationName} == "getProfessionQuestion"</simple>
+			      <process ref="getProfessionQuestions" id="getProfessionQuestions"/>
+			    <process ref="ProfessionsResponse" id="sendGenericResponse"/>
+			    <bean ref="ProfessionsServiceImpl" method="SendMessage" id="ProfessionsQuesServiceImpl" /> 
+			     <log message="PBQ Profession Question service response : ${body}" id="PBProfessionReq"/> 
+	    </when>
+	    
+	    </choice>
+    </route>
+  </camelContext>
+</blueprint>

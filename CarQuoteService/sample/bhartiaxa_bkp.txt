@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<blueprint xmlns="http://www.osgi.org/xmlns/blueprint/v1.0.0"
+       xmlns:camel="http://camel.apache.org/schema/blueprint"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xsi:schemaLocation="http://www.osgi.org/xmlns/blueprint/v1.0.0 http://www.osgi.org/xmlns/blueprint/v1.0.0/blueprint.xsd
+       http://camel.apache.org/schema/blueprint http://camel.apache.org/schema/blueprint/camel-blueprint.xsd">
+
+<camelContext trace="false" streamCache="true" threadNamePattern="BhartiAxaThread:#counter#" id="BhartiAxaReqQContext" xmlns="http://camel.apache.org/schema/blueprint">
+  <dataFormats>
+    <xmljson forceTopLevelObject="true" rootName="Session" skipWhitespace="true" trimSpaces="true" skipNamespaces="true" removeNamespacePrefixes="true" id="BAXAjsonxml"/>
+    <xmljson forceTopLevelObject="true" skipWhitespace="true" trimSpaces="true" skipNamespaces="true" removeNamespacePrefixes="true" id="BAXAxmljson"/>
+  </dataFormats>
+  <onException>
+    <exception>java.net.SocketTimeoutException</exception>
+    <exception>java.net.SocketException</exception>
+    <handled>
+      <constant>true</constant>
+    </handled>
+    <log message="Bharti Axa quote service seems to be down or not responded within stipulated time frame"/>
+    <process ref="ExceptionMQMSGProcessor" customId="true" id="BhartiAxaExceptionMQMSGProcessor"/>
+    <to pattern="InOnly" uri="activemq:queue:BhartiAxaResQ?timeToLive=40000&amp;includeSentJMSMessageID=true"/>
+  </onException>
+  <route id="BhartiAxadaramReqQListener">
+    <from uri="activemq:queue:BhartiAxaReqQ" id="FromBhartiAxaReqQ">
+      <description/>
+    </from>
+    <bean ref="BhartiAXAQuoteRequestListener" method="onMessage" id="BhartiAXACarReqQBean"/>
+    <process ref="CarRequestQProcessor" id="BhartiAXACarReqQProcessor"/>
+    <choice id="BhartiAXACarReqQListenerDecision">
+      <when id="BhartiAXAReqYES">
+        <simple>${header.responseCode} == 1000</simple>
+        <process ref="CarExtServiceReqProcessor" id="BhartiAXAReqProcessor"/>
+        <choice id="BhartiAXACarQuoteDecision">
+          <when id="BhartiAXACarReq">
+            <simple>${header.reqFlag} == "True"</simple>
+            <log message="BhartiAXA Car request sent to SutrrMapper : ${body} "/>
+            <to pattern="InOut" uri="xpathmapper://xpathmapdata" id="BhartiAXACarXPathMapper"/>
+            <process ref="RequestTransformSaver" id="BhartiAXATransReqSave"/>
+            <unmarshal ref="BAXAjsonxml" id="BhartiAXAJSONTOXML"/>
+            <process ref="SOAPRequestFormatter" id="BhartiAXASOAPRequestFormatter"/>
+            <log message="BhartiAXA XML Car request  : ${body} "/>
+            <removeHeaders pattern="Camel*"/>
+            <recipientList>
+              <constant>https://uat.bhartiaxaonline.co.in/cordys/com.eibus.web.soap.Gateway.wcp?organization=o%3DB2C%2Ccn%3Dcordys%2Ccn%3DdefaultInst106%2Co%3Dmydomain.com</constant>
+            </recipientList>
+            <log message="BhartiAXA Car Quote SOAP Response : ${body}"/>
+            <process ref="SOAPResponseFormatter" id="BhartiAXASOAPResponseFormatter"/>
+            <marshal ref="BAXAxmljson" id="BhartiAXAXMLTOJSON"/>
+            <log message="BhartiAXA Car JSON Quote Response : ${body}"/>
+            
+          </when>
+          <when id="BhartiAXACARReqError">
+            <simple>${header.reqFlag} == "False"</simple>
+            <bean ref="CarQuoteResponse" method="requestError"/>
+            <process ref="CarMQMsgProcessor" id="BhartiAXAProcessorErrorQ"/>
+            <to pattern="InOnly" uri="activemq:queue:BhartiAxaResQ?timeToLive=40000&amp;includeSentJMSMessageID=true"/>
+            <log message="REQ Process ERROR : BhartiAxa JMS Message Id from Q : ${header.JMSMessageID}"/>
+            <marshal>
+              <json prettyPrint="true" library="Jackson"/>
+            </marshal>
+          </when>
+        </choice>
+      </when>
+      <when id="BhartiAXAReqListenerError">
+        <simple>${header.responseCode} == 1048</simple>
+        <bean ref="CarQuoteResponse" method="requestError"/>
+        <process ref="CarMQMsgProcessor" id="BhartiAXAReqProcessorErrorQ"/>
+        <to pattern="InOnly" uri="activemq:queue:BhartiAxaResQ?timeToLive=40000&amp;includeSentJMSMessageID=true"/>
+        <log message="Listener REQ Process ERROR : BhartiAXA JMS Message Id from Q : ${header.JMSMessageID}"/>
+        <marshal>
+          <json prettyPrint="true" library="Jackson"/>
+        </marshal>
+      </when>
+    </choice>
+  </route>
+</camelContext>
+
+</blueprint>

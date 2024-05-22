@@ -1,0 +1,207 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<blueprint xmlns="http://www.osgi.org/xmlns/blueprint/v1.0.0"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:cxf="http://camel.apache.org/schema/blueprint/cxf"
+	xsi:schemaLocation="
+       http://www.osgi.org/xmlns/blueprint/v1.0.0 http://www.osgi.org/xmlns/blueprint/v1.0.0/blueprint.xsd
+        http://camel.apache.org/schema/blueprint/cxf http://camel.apache.org/schema/blueprint/cxf/camel-cxf.xsd
+       http://camel.apache.org/schema/blueprint http://camel.apache.org/schema/blueprint/camel-blueprint.xsd">
+       
+       <cxf:rsServer id="BhartiAxaTravelProposalEndpoint" address="/bhartiaxatravelpolicyproposal" 
+	serviceClass="com.idep.proposal.service.TravelProposalService" loggingFeatureEnabled="true">
+		<cxf:providers>
+			<bean class="org.apache.cxf.rs.security.cors.CrossOriginResourceSharingFilter"/>
+		</cxf:providers>
+	</cxf:rsServer>
+	
+	<camelContext streamCache="true" id="BhartiAxaTravelProposalContext" xmlns="http://camel.apache.org/schema/blueprint">
+  <dataFormats>
+			<xmljson forceTopLevelObject="true" skipWhitespace="true" trimSpaces="true" skipNamespaces="true"
+			expandableProperties="Member" removeNamespacePrefixes="true" id="BhartiAxajsonxml" />
+			<xmljson forceTopLevelObject="true" skipWhitespace="true"
+				trimSpaces="true" skipNamespaces="true" removeNamespacePrefixes="true"
+				id="BhartiAxaxmljson" />
+  </dataFormats>
+  <onException>
+			<exception>java.net.SocketTimeoutException</exception>
+			<exception>java.net.SocketException</exception>
+			<handled>
+				<constant>true</constant>
+			</handled>
+			<log message="BhartiAxa travel proposal service seems to be down" />
+			<process ref="ProposalExceptionProcessor" customId="true" id="BhartiAxaTraProposalExceptionProcessor" />
+	</onException>
+	<onException>
+			<exception>org.apache.camel.component.http4.HttpOperationFailedException</exception>
+			<handled>
+				<constant>true</constant>
+			</handled>
+			<log message="BhartiAxa travel proposal Http Operation Failed : check input provided" />
+			<process ref="ProposalExceptionProcessor" customId="true" id="BhartiAxaHTTPProposalExceptionProcessor" />
+	</onException>
+	<onException>
+			<exception>com.idep.proposal.exception.processor.ExecutionTerminator</exception>
+			<exception>java.lang.Exception</exception>
+			<handled>
+				<constant>true</constant>
+			</handled>
+			<log message="BhartiAxa travel proposal process terminated" />
+			<process ref="ProposalExceptionProcessor" customId="true" id="BhartiAxaTraGenericException" />
+			<marshal>
+				<json prettyPrint="true" library="Jackson" />
+			</marshal>
+	</onException>	
+<route id="BhartiAxaTravelProposalRoute">
+		<from uri="cxfrs:bean:BhartiAxaTravelProposalEndpoint" />
+		<choice id="BhartiAxaTravelDecisionMaker">
+			<when id="BhartiAxaProposalReq">
+				<simple>${header.operationName} == "submitTravelProposal"</simple>
+				<log message="Inside BhartiAxa Travel proposal request"/>
+					<bean ref="TravelProposalServiceImpl" method="submitTravelProposal" id="BhartiAxaProposalSubmitReq"/>
+					<process ref="TravelProposalReqProcessor" id="BhartiAxaTravelProposalReqProcessor" />
+					<process ref="ProposalAddressProcessor" id="TataAIGProposalAddressProcessor" />
+					<process ref="TravelProposalReqPostProcessor" id="BhartiAxaTravelProposalReqPostProcessor" />
+					<process ref="TravelProposalAgeCalculator" id="BhartiAxaTravelProposalAgeCalculator" />
+					<process ref="TravelProposalReqLogProcessor" id="BhartiAxaTravelProReqLogProcessor" />
+					<process ref="TravelPolicyLogProcessor" id="BhartiAxaLogProcessor1" />
+				<!-- 	<when id="policyStatusSuccessPOSTSuccBASETrue">
+						<simple>${header.baseEnvStatus} == "true"</simple>
+						<log message="Base env status true" />
+						<to uri="direct:proposalCreateRequest" />
+					</when> -->
+					<!-- <when id="policyStatusSuccessPOSTSuccBASEFalse">
+						<simple>${header.baseEnvStatus} == "false"</simple> -->
+						<log message="Base env status false" />
+						<multicast  id="BhartiAxaTravelPropRequestMSG">
+							<pipeline>
+								<to uri="direct:proposalCreateRequest" />
+							</pipeline>
+							<pipeline>
+								<process ref="TravelPolicyLogProcessor" id="BhartiAxaTravelLogProcessor" />	
+								<log message="BhartiAxa Travel Policy XPath Mapper Request ${body}" />
+								<to pattern="InOut" uri="xpathmapper://xpathmapdata" id="BhartiAxaXPathMapper" />
+								<log message="BhartiAxa Travel Policy XPath Mapper response ${body}" />
+								
+								<process ref="TravelProposalServiceReqLogProcessor" id="HDFCServiceReqLogger" />
+								<unmarshal ref="BhartiAxajsonxml" id="BhartiAxaJSONTOXML" />
+								<process ref="XMLCharEmitter" id="BhartiAxaXMLCharEmitter" />
+								<log message="BhartiAxa Travel XML Proposal Request : ${body}" />
+								<process ref="SoapReqFormatter" id="BhartiAxaSoapReqGenerator" />
+								
+								<to pattern="InOut" uri="webservconsumer://invoke" id="BhartiAxaTravelURLCall" />
+								<log message="BhartiAxa Travel Policy SoapReqFormatter response ${body}" />
+								<process ref="BhartiAxaSoapResFormatter" id="HDFCErgoSoapResposneFormatter" />
+    							<marshal ref="BhartiAxaxmljson" id="BhartiAxaXMLTOJSON"/>
+								<process ref="TravelProposalResHandler" id="BhartiAxaTravelProposalResHandler1" />
+								<log message=" BhartiAxa New mapper Input:  ${body}"/>
+								<to pattern="InOut" uri="xpathmapper://xpathmapdata" id="BhartiAxaWbserviceResponseMapper" />
+								<log message=" BhartiAxa New mapper output:  ${body}"/>
+								<process ref="TravelProposalResProcessor" id="BhartiAxaTravelProposalResProcessor" />
+								<process ref="ProposalReqDBStore" id="BhartiAxaTravelProposalReqDBStore" />
+								<process ref="TravelPolicyLogProcessor" id="BhartiAxaTravelLogProcessor" />
+								<process ref="ProposalResProcessor" id="BhartiAxaTravelProposalResProcessor1" />
+								<bean ref="TravelProposalServiceImpl" method="submitTravelProposal" id="BhartiAxaTravelProposalResponse" />
+								<marshal>
+									<json prettyPrint="true" library="Jackson" />
+								</marshal>	 	
+								</pipeline>
+						</multicast>
+			   		</when>	
+ 			   	<when id="BhartiAxaTravelPolicyCreator">
+					<simple>${header.operationName} == "createPolicy"</simple>
+					<log message="BhartiAxa Travel : createPolicy request received" />
+					<bean ref="TravelPolicySubmitServiceImpl" method="submitPolicy"
+						id="BhartiAxaTravelPolicyServiceRequest" />
+					<process ref="TravelPolicyLogProcessor" id="BhartiAxaTravelPolicyLogProcessor" />
+					<multicast>
+						<pipeline>
+							<process ref="PaymentResponseUpdateProcessor" id="BhartiAxaTravelPaymentResProcessor" />
+							<log message="BhartiAxa  PaymentResponseUpdateProcessor response: ${body}"/>
+							<process ref="ProposalReqDBStore" id="BhartiAxaTravelPolicyReqDBStore" />
+							<log message="Payment response added in database for BhartiAxa Travel " />
+						</pipeline>
+						<pipeline>
+							<process ref="PaymentResponseValidator" id="BhartiAxaTravelPaymentResValidator" />
+							<process ref="TravelPolicyReqProcessor" id="BhartiAxaTravelPolicyReqProcessor" /> 
+							<process ref="TravelPolicyProcessor" id="BhartiAxaTravelPolicyProcessor" />
+							<log message="BhartiAxa Travel Policy XPath Mapper request ${body}" />
+							<to pattern="InOut" uri="xpathmapper://xpathmapdata" id="BhartiAxaTravelXPathMapper" />
+							<log message="BhartiAxa Travel Policy response ${body}" />
+							<process ref="TravelCarrierPolicyResponseProcessor" id="TravelCarrierPolicyResponseProcessor" />
+							<log message="BhartiAxa Travel Input to TravelPolicyREQCONF : ${body}" />
+							<to pattern="InOut" uri="xpathmapper://xpathmapdata" id="FutureGenTravelXPathMapper" />
+							<log message="BhartiAxa Travel Output of TravelPolicyREQCONF : ${body}" />
+							<process ref="TravelPolicyReqHandler" id="FutureGenTravelPolicyReqHandler" />
+							<process ref="ProposalReqDBStore" id="FutureGenErgoTravelProposalReqDBStore" />
+							<process ref="TravelPolicyResHandler" id="FutureGenTravelPolicyResHandler" />
+							<log message="BhartiAxa Travel Input to TravelPolicyRESCONF : ${body}" />
+							<to pattern="InOut" uri="xpathmapper://xpathmapdata" id="FutureGenPolicyResMapperUI" />
+							<multicast>
+								<pipeline>
+									<process ref="TravelPolicyReqHandler" id="BhartiAxaTravelPolicyRes" />
+									<process ref="UserProfileReqProcessor" id="BhartiAxaTravelUserProfileReqProcessor" />
+						<to pattern="InOnly" uri="activemq:queue:BhartiAxaTravelPolicyDocReqQ" id="BhartiAxaTRAVELPolicyDocReqQ" />
+									
+								</pipeline>
+								<pipeline>
+									<process ref="TravelPolicyResLogProcessor" id="BhartiAxaTravelPolicyResLogProcessor" />
+									<process ref="TravelPolicyLogProcessor" id="BhartiAxaTravelLogProcessor5" />
+									<process ref="TravelPolicyReqHandler" id="BhartiAxaTravelPolicyResHandler" />
+									<process ref="TravelPolicyResProcessor" id="BhartiAxaTravelPolicyResProcessor" />
+									<bean ref="TravelPolicySubmitServiceImpl" method="sendMessage"
+										id="BhartiAxaTravelPolicyServiceResponse" />
+										<log message="BhartiAxa  Sccessfully completed : ${body}"/>
+								</pipeline>
+							</multicast>
+						</pipeline>
+					</multicast>
+			</when>
+ 			   		
+			  </choice>			
+    </route>
+    <route id="BhartiAxaPolicyDocQRoute">
+			<from uri="activemq:queue:BhartiAxaTravelPolicyDocReqQ" id="BhartiAxaPolicyDocQ">
+				<description />
+			</from>
+			<log message="BhartiAxa starting its doc download process" />
+			<bean ref="TravelPolicyDocServiceImpl" method="onMessage"
+						id="BhartiAxaTravelPolicyServiceRequest1" />
+			<log message="BhartiAxa starting its doc download process1 : ${body}" />
+			<process ref="TataAIGTravelPolicyDocProcessor" id="BhartiAxaTravelPolicyDocProcessor" />
+			<process ref="TravelPolicyLogProcessor" id="BhartiAxaTravelLogProcessor6" />
+			<to pattern="InOut" uri="xpathmapper://xpathmapdata" id="BhartiAxaXPathMapperForFetchDoc" />
+			<unmarshal ref="BhartiAxajsonxml" id="BhartiAxaJSONTOXML1" />
+			<log message="BhartiAxa Fetch Policy Document  JSON To XML Conversion : ${body}" />
+			<process ref="XMLCharEmitter" id="BhartiAxaXMLCharEmitter23" />
+			<log message="BhartiAxa Travel XML PolicyDoc Request : ${body}" />
+			<process ref="TataAIGDocSoapReqGenerator" id="BhartiAxaDocSoapReqGenerator" />
+			<log message="BhartiAxaSoapReqGenerator SOAP Conversion Done : ${body}" />
+			<to pattern="InOut" uri="webservconsumer://invoke" id="BhartiAxaecthDocURL" />
+			<log message="mapper Fetch Policy Document responce   : ${body}" />
+			<process ref="TataAIGSoapResFormatter" id="BhartiAxaSoapResFormatter1"/>
+			<marshal ref="BhartiAxaxmljson" id="BhartiAxaXMLTOJSON1"/>
+    		<log message=" Tata AIG XMLJSON Policy Doc Download:  ${body}"/>
+			<process ref="TataAIGTravelResponseProcessor" id="BhartiAxaTravelProposalResHandler11" />
+			<log message="Policy Document Created SuccessFully !!! : ${body}" />
+			<process ref="UserProfilePolicyUpdateProcessor" id="RelUserProfilePolicyUpdateProcessor" />
+			<process ref="TravelPolicyLogProcessor" id="BhartiAxaPolicyDocTravelLogProcessor5" />
+	</route> 
+   <route id="createProposalRoute">
+			<from uri="direct:proposalCreateRequest" />
+			<process ref="TravelProposalDBReqProcessor" id="BhartiAxaTravelProposalDBReqProcessor" />
+			<to pattern="InOut" uri="xpathmapper://xpathmapdata" id="BhartiAxaXPathMapperBASE" />
+			<process ref="TravelPolicyLogProcessor" id="BhartiAxaTravelLogProcessor61" />
+			<process ref="ProposalReqDBStore" id="BhartiAxaProposalReqDBStore" />
+			<process ref="TravelProposalResProcessor" id="BhartiAxaTravelProposalResProcessor2" />
+			<bean ref="TravelProposalServiceImpl" method="sendMessage" id="BhartiAxaTravelProposalServiceImpl"/>
+			<marshal>
+				<json prettyPrint="true" library="Jackson" />
+			</marshal>
+	</route>
+	
+
+  </camelContext>
+  
+  
+</blueprint>
+			 
+					

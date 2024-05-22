@@ -1,0 +1,162 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<blueprint xmlns="http://www.osgi.org/xmlns/blueprint/v1.0.0"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xmlns:cxf="http://camel.apache.org/schema/blueprint/cxf"
+       xmlns:cm="http://aries.apache.org/blueprint/xmlns/blueprint-cm/v1.1.0"
+       xsi:schemaLocation="
+       http://www.osgi.org/xmlns/blueprint/v1.0.0 http://www.osgi.org/xmlns/blueprint/v1.0.0/blueprint.xsd
+        http://camel.apache.org/schema/blueprint/cxf http://camel.apache.org/schema/blueprint/cxf/camel-cxf.xsd
+       http://camel.apache.org/schema/blueprint http://camel.apache.org/schema/blueprint/camel-blueprint.xsd">
+
+
+	<cxf:rsServer id="AgencyServiceEndPoint" address="/agencyservice" serviceClass="com.idep.service.AgencyService" loggingFeatureEnabled="true">
+	<cxf:providers>
+        <bean class="org.apache.cxf.rs.security.cors.CrossOriginResourceSharingFilter" />
+	</cxf:providers>
+	</cxf:rsServer>
+
+<cm:property-placeholder persistent-id="AMQCustomProperties"> 
+ </cm:property-placeholder> 
+
+
+<bean id="jmsConnectionFactory"
+   class="org.apache.activemq.ActiveMQConnectionFactory">
+   <property name="brokerURL" value="${amqbroker.host}:${amqbroker.port}" />
+   <property name="userName" value="${amqbroker.username}"/>
+   <property name="password" value="${amqbroker.password}"/>
+</bean>
+
+<bean id="pooledConnectionFactory"
+   class="org.apache.activemq.pool.PooledConnectionFactory" init-method="start" destroy-method="stop">
+   <property name="maxConnections" value="${amq.maxConnections}" />
+   <property name="connectionFactory" ref="jmsConnectionFactory" />
+</bean>
+ 
+<bean id="jmsConfig"
+   class="org.apache.camel.component.jms.JmsConfiguration">
+   <property name="connectionFactory" ref="pooledConnectionFactory"/>
+   <property name="concurrentConsumers" value="${amq.concurrentConsumers}"/>
+   <property name="mapJmsMessage" value="${amq.mapJmsMessage}" />
+   <property name="maxConcurrentConsumers" value="${amq.maxConcurrentConsumers}" />
+   <property name="asyncConsumer" value="${amq.asyncConsumer}" />
+   <property name="asyncStartListener" value="${amq.asyncStartListener}" />
+  <!--  
+   <property name="consumer.prefetchSize" value="1" />
+   <property name="consumer.maximumPendingMessageLimit" value="0" />
+   -->
+   
+</bean>
+ 
+<bean id="activemq"
+    class="org.apache.activemq.camel.component.ActiveMQComponent">
+    <property name="configuration" ref="jmsConfig"/>
+    <property name="transacted" value="${amq.transacted}"/>
+    <property name="cacheLevelName" value="${amq.cacheLevelName}" />
+</bean>
+
+
+<bean id="AgencyServiceImpl" class="com.idep.impl.service.AgencyServiceImpl"/>
+<bean id="AgencyServiceResponse" class="com.idep.response.AgencyServiceResponse"/>
+<bean id="ValidateUserProcessor" class="com.idep.processor.ValidateUserProcessor"/>
+<bean id="UserProfileProcessor" class="com.idep.processor.UserProfileProcessor"/>
+<bean id="FetchListProcessor" class="com.idep.processor.FetchListProcessor"/>
+<bean id="AgencyMaintProcessor" class="com.idep.processor.AgencyMaintProcessor"/>
+<bean id="AgentMaintProcessor" class="com.idep.processor.AgentMaintProcessor"/>
+<bean id="ActivityMaintProcessor" class="com.idep.processor.ActivityMaintProcessor"/>
+<bean id="ForgotPassProcessor" class="com.idep.processor.ForgotPassProcessor"/>
+
+
+
+  <camelContext threadNamePattern="AgencyThread:#counter#" id="AgencyService" xmlns="http://camel.apache.org/schema/blueprint">
+  <threadPoolProfile poolSize="50" maxPoolSize="100" maxQueueSize="500" customId="true" id="agencyreqPool"/>
+  <route id="Agencyroute">
+    <from uri="cxfrs:bean:AgencyServiceEndPoint?continuationTimeout=90000"/>
+    <log message="Agency Portal Service Started"/>
+    <log message="The message contains   :  ${body}"/>
+    <log message="The header contains  :  ${header.operationName}"/>
+    <choice id="AgencyServiceDecision">
+	    <when id="AgencyServiceLoginReq">
+	        <simple>${header.operationName} == "validateUser"</simple>
+			    <bean ref="AgencyServiceImpl" method="validateUser" id="UserBean"/>
+			    <process ref="ValidateUserProcessor" id="ValUserProcessor"/>
+			    <log message="The message contains after processor  :  ${body}"/>
+			    <bean ref="AgencyServiceResponse" method="sendGenericResponse"/>
+			    <log message="The final message contains ${body}"/>
+	    </when>
+	    <when id="AgencyServiceUserReq">
+	        <simple>${header.operationName} == "getUserDetails"</simple>
+			    <bean ref="AgencyServiceImpl" method="getUserDetails" id="UserProfileBean"/>
+			    <log message="The message contains before UserProfileProcessor  :  ${body}"/>
+			    <process ref="UserProfileProcessor" id="UserProfileProcessor"/>
+			    <log message="The message contains after UserProfileProcessor  :  ${body}"/>
+			    <bean ref="AgencyServiceResponse" method="sendGenericResponse"/>
+			    <log message="The final message contains ${body}"/>
+	    </when>
+	    <when id="AgencyServicefetchReq">
+	        <simple>${header.operationName} == "fetchDetails"</simple>
+			    <bean ref="AgencyServiceImpl" method="fetchDetails" id="fetchDetailslist"/>
+			    <log message="The message contains before FetchListProcessor  :  ${body}"/>
+			    <process ref="FetchListProcessor" id="FetchProcessor"/>
+			    <log message="The message contains after FetchListProcessor :  ${body}"/>
+			    <bean ref="AgencyServiceResponse" method="sendGenericResponse"/>
+			    <log message="The final message contains ${body}"/>
+	    </when>
+	   	<when id="AgencyService">
+	        <simple>${header.operationName} == "agencyMaint"</simple>
+			    <bean ref="AgencyServiceImpl" method="agencyMaint" id="agencyMaintnance"/>
+			    <log message="The message contains before AgencyMaintProcessor  :  ${body}"/>
+			    <process ref="AgencyMaintProcessor" id="AgencyMaintProcessor"/>
+			    <log message="The message contains after AgencyMaintProcessor :  ${body}"/>
+			    <bean ref="AgencyServiceResponse" method="sendGenericResponse"/>
+			    <log message="The final message contains ${body}"/>
+	    </when>
+	   	<when id="AgentService">
+	        <simple>${header.operationName} == "agentMaint"</simple>
+			    <bean ref="AgencyServiceImpl" method="agentMaint" id="agentMaintenance"/>
+			    <log message="The message contains before AgentMaintProcessor  :  ${body}"/>
+			    <process ref="AgentMaintProcessor" id="AgentMaintProcessor"/>
+			    <log message="The message contains after AgentMaintProcessor :  ${body}"/>
+			    <bean ref="AgencyServiceResponse" method="sendGenericResponse"/>
+			    <log message="The final message contains ${body}"/>
+	    </when>
+	   	<when id="ActivityLog">
+	        <simple>${header.operationName} == "activityMaint"</simple>
+			    <bean ref="AgencyServiceImpl" method="activityMaint" id="activityMaintenance"/>
+			    <log message="The message contains before ActivityMaintProcessor  :  ${body}"/>
+			    <process ref="ActivityMaintProcessor" id="ActivityMaintProcessor"/>
+			    <log message="The message contains after ActivityMaintProcessor :  ${body}"/>
+			    <bean ref="AgencyServiceResponse" method="sendGenericResponse"/>
+			    <log message="The final message contains ${body}"/>
+	    </when>
+	    <when id="ForgotPass">
+	        <simple>${header.operationName} == "forgotPass"</simple>
+			    <bean ref="AgencyServiceImpl" method="forgotPass" id="forgotPass"/>
+			    <log message="The message contains before ForgotPassProcessor  :  ${body}"/>
+			    <process ref="ForgotPassProcessor" id="ForgotPassProcessor"/>
+			    <log message="The message contains after ForgotPassProcessor :  ${body}"/>
+			    <bean ref="AgencyServiceResponse" method="sendGenericResponse"/>
+			    <log message="The final message contains ${body}"/>
+	    </when>
+	    	    <when id="AgencyServiceTokenReq">
+	        <simple>${header.operationName} == "createToken"</simple>
+			    <bean ref="AgencyServiceImpl" method="createToken" id="UserBean"/>
+			    <log message="The message contains after AgencyServiceImpl  :  ${body}"/>
+			    <bean ref="AgencyServiceResponse" method="sendGenericResponse"/>
+			    <log message="The final message contains ${body}"/>
+	    </when>
+	        <when id="AgencyServiceTokenReq">
+	        <simple>${header.operationName} == "verifyToken"</simple>
+			    <bean ref="AgencyServiceImpl" method="verifyToken" id="UserBean"/>
+			    <log message="The message contains after Token processor  :  ${body}"/>
+			    <bean ref="AgencyServiceResponse" method="sendGenericResponse"/>
+			    <log message="The final message contains ${body}"/>
+	    </when>
+	    
+    </choice>
+  </route>
+  
+  
+  
+</camelContext>
+
+</blueprint>

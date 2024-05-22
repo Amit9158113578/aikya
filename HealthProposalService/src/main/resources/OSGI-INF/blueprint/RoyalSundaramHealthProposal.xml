@@ -1,0 +1,221 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<blueprint xmlns="http://www.osgi.org/xmlns/blueprint/v1.0.0"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:cxf="http://camel.apache.org/schema/blueprint/cxf"
+	xsi:schemaLocation="
+       http://www.osgi.org/xmlns/blueprint/v1.0.0 http://www.osgi.org/xmlns/blueprint/v1.0.0/blueprint.xsd
+        http://camel.apache.org/schema/blueprint/cxf http://camel.apache.org/schema/blueprint/cxf/camel-cxf.xsd
+       http://camel.apache.org/schema/blueprint http://camel.apache.org/schema/blueprint/camel-blueprint.xsd">
+
+	<cxf:rsServer id="RoyalHealthProposalEndpoint" address="/RoyalSundaramHealthPolicyProposal"
+		serviceClass="com.idep.proposal.service.ProposalSubmitService"
+		loggingFeatureEnabled="true">
+		<cxf:providers>
+			<bean
+				class="org.apache.cxf.rs.security.cors.CrossOriginResourceSharingFilter" />
+		</cxf:providers>
+	</cxf:rsServer>
+
+	<bean id="RoyalHealthProposalhutdownStrategy" class="org.apache.camel.impl.DefaultShutdownStrategy">
+		<property name="timeout" value="30" />
+	</bean>
+
+	<!-- <bean id="royalhttp" class="org.apache.camel.component.http.HttpComponent">
+		<property name="camelContext" ref="RoyalHealthProposalContext" />
+		<property name="httpConnectionManager" ref="royalHttpConnectionManager" />
+	</bean>
+
+	<bean id="royalhttps" class="org.apache.camel.component.http.HttpComponent">
+		<property name="camelContext" ref="RoyalHealthProposalContext" />
+		<property name="httpConnectionManager" ref="royalHttpConnectionManager" />
+	</bean> -->
+
+	<bean id="royalHttpConnectionManager"
+		class="org.apache.commons.httpclient.MultiThreadedHttpConnectionManager">
+		<property name="params" ref="royalHttpConnectionManagerParams" />
+	</bean>
+
+	<bean id="royalHttpConnectionManagerParams"
+		class="org.apache.commons.httpclient.params.HttpConnectionManagerParams">
+		<property name="defaultMaxConnectionsPerHost" value="5" />
+		<property name="maxTotalConnections" value="100" />
+		<property name="connectionTimeout" value="10000" />
+		<property name="soTimeout" value="60000" />
+	</bean>
+
+	<camelContext streamCache="true" threadNamePattern="HLTHPROPROYAL"
+		id="RoyalHealthProposalContext" xmlns="http://camel.apache.org/schema/blueprint">
+		<dataFormats>
+			<xmljson forceTopLevelObject="true" namespaceLenient="true"
+				rootName="o" skipWhitespace="true" trimSpaces="true" skipNamespaces="true"
+				removeNamespacePrefixes="true"
+				expandableProperties="insuredDetails lifestyleDetails medicalDetails additionMedicalQuestionInfo"
+				id="RSHealthjsonxml" />
+			<xmljson forceTopLevelObject="true" skipWhitespace="true"
+				trimSpaces="true" skipNamespaces="true" removeNamespacePrefixes="true"
+				id="RSHealthxmljson" />
+			<xmljson forceTopLevelObject="true" namespaceLenient="true"
+				rootName="o" skipWhitespace="true" trimSpaces="true" skipNamespaces="true"
+				removeNamespacePrefixes="true" id="RSProposalUpdateHealthjsonxml" />
+		</dataFormats>
+		<onException>
+			<exception>java.net.SocketTimeoutException</exception>
+			<exception>java.net.SocketException</exception>
+			<handled>
+				<constant>true</constant>
+			</handled>
+			<log message="Royal Health proposal service seems to be down" />
+			<process ref="ProposalExceptionProcessor" customId="true"
+				id="RoyalHealthPropExcepProcessor" />
+		</onException>
+		<onException>
+			<exception>com.idep.policy.exception.processor.ExecutionTerminator</exception>
+			<exception>java.lang.Exception</exception>
+			<handled>
+				<constant>true</constant>
+			</handled>
+			<log message="Royal Health proposal service Exception occure" />
+			<process ref="ProposalExceptionProcessor" customId="true"
+				id="RoyalHealthPropExcepProcessor" />
+		</onException>
+		<route id="RoyalProposalRoute">
+			<from uri="cxfrs:bean:RoyalHealthProposalEndpoint" />
+			<choice id="RoyalHealthPolicyProposalDecision">
+				<when id="RoyalHealthProposalReq">
+					<simple>${header.operationName} == "submitHealthProposal"</simple>
+					<bean ref="ProposalSubmitServiceImpl" method="submitProposal"
+						id="RoyalHealthProposalSubmitReq" />
+					<process ref="ProposalReqProcessor" id="RoyalHealthProposalReqProcess" />
+					<process ref="HealthProposalReqLogProcessor" id="RoyalHealthProReqLogProcessor" />
+					<process ref="HealthPolicyLogProcessor" id="RoyalHealthLogProcessor1" />
+					<!-- <when id="baseEnvStatusTrue">
+						<simple>${header.baseEnvStatus} == "true"</simple>
+						<log message="Base env status true" />
+						<to uri="direct:proposalCreateRequest" />
+					</when>
+					<when id="baseEnvStatusFalse">
+						<simple>${header.baseEnvStatus} == "false"</simple>
+						<log message="Base env status false" />-->
+						<multicast id="RoyalProposalMessageSender">
+							<pipeline id="RoyalProposalQMessage">
+								<to uri="direct:proposalCreateRequest" />
+							</pipeline>
+							<pipeline id="CarrierProposalReq"> 
+								<process ref="CarrierCityLoader" id="HDFCCarrierCityLoader" />
+								<process ref="HealthProposalElderMemberDataProcessor"
+									id="HealthProposalElderMemberDataProcessor" />
+									<process ref="ProposalAddressProcessor" id="HDFCErgoHealthAddressProcessor" />
+									<process ref="HealthPolicyLogProcessor" id="RoyalHealthLogProcessor2" />
+								<to pattern="InOut" uri="xpathmapper://xpathmapdata" id="RoyalSundaramHealthXPathMapper" />
+								<process ref="RoyalProposalRequestFormatter" id="RoyalProposalMedicalQuestionFormatter" />
+								<log
+									message="Royal Sundaram health RoyalProposalRequestFormatter request received ${body}" />
+								<unmarshal ref="RSHealthjsonxml" id="RSQUOTEJSONTOXML" />
+								<log
+									message="Royal Sundaram health RSQUOTEJSONTOXML request received ${body}" />
+								<process ref="XMLCharEmitter" id="RSHealthXMLCharEmitter" />
+								<process ref="HealthProposalServiceReqLogProcessor" id="RoyalProposalServiceReqLogger" />
+								<process ref="HealthPolicyLogProcessor" id="RoyalHealthLogProcessor3" />
+								<to pattern="InOut" uri="webservconsumer://invoke" id="ROYALSUNHEALTHPROPURL" />
+								<process ref="HealthProposalServiceResLogProcessor" id="RoyalHealthProposalResLogProcessor" />
+								<marshal ref="RSHealthxmljson" id="RSPProposalResponseJSON" />
+								<process ref="RSGProposalReqProcessor" id="RoyalSunHealthGProposalReqProcessor" />
+								<choice id="RSHealthCarrierProposalResp">
+									<when id="RSHealthProposalSuccessResp">
+										<simple>${header.reqFlag} == "True"</simple>
+											<to pattern="InOut" uri="xpathmapper://xpathmapdata" id="RSunHealthGProposalReqMapper" />
+											<unmarshal ref="RSProposalUpdateHealthjsonxml" id="PROPOSALUPDATEJSONTOXML" />
+											<process ref="XMLCharEmitter" id="RoyalSHealthXMLCharEmitter" />
+											<process ref="HealthProposalServiceReqLogProcessor" id="RoyalServiceReqLogger" />
+											<process ref="HealthPolicyLogProcessor" id="RoyalHealthLogProcessor4" />
+											<to pattern="InOut" uri="webservconsumer://invoke" id="ROYALSUNHEALTHUPDTPROPURL" />
+											<process ref="HealthProposalServiceResLogProcessor" id="RoyalHealthProposalResLogProcessor" />
+											<marshal ref="RSHealthxmljson" id="RoyalPProposalResponseJSON" />
+											<process ref="ProposalResHandler" id="RSProposalResProcessor" />
+											<to pattern="InOut" uri="mapper://mapdata" id="RSProposalUpdateReqMapper" />
+											<process ref="ProposalReqHandler" id="RSHealthProposalReqHandler" />
+											<process ref="ProposalReqDBStore" id="ProposalReqUpdateDBStore" />
+											<process ref="ProposalResProcessor" id="ReligareProposalResProcessor" />
+											<process ref="RSHealthResponseProcessor" id="RSHealthResponseProcessor" />
+											<bean ref="ProposalSubmitServiceImpl" method="sendMessage" />
+											<marshal>
+												<json prettyPrint="true" library="Jackson" />
+											</marshal>
+									</when>
+									<when id="ReligareHealthProposalFailureResp">
+										<simple>${header.reqFlag} == "False"</simple>
+											<log message="Royal Sundaram Error response received " />
+											<bean ref="ProposalSubmitServiceImpl" method="sendMessage" id="RSHealthProposalResponse"/>
+									</when>
+							</choice>
+							 </pipeline>
+						</multicast>
+					<!--</when> -->
+				</when>
+				<when id="royalHealthPolicyCreator">
+					<simple>${header.operationName} == "createPolicy"</simple>
+					<log message="Royal Sundaram health policy create request received ${body}" />
+					<bean ref="PolicySubmitServiceImpl" method="submitPolicy"
+						id="RoyalPolicyServiceRequest" />
+					<process ref="HealthPolicyLogProcessor" id="RoyalHealthPolicyLogProcessor" />
+					<multicast>
+						<pipeline>
+							<process ref="PaymentResponseUpdateProcessor" id="RoyalHealthPaymentResProcessor" />
+							<process ref="ProposalReqDBStore" id="RoyalHealthPolicyResDBStore" />
+							<log
+								message="Payment response added in database for Royal Sundaram Health ${body}" />
+						</pipeline>
+						<pipeline>
+							<process ref="PaymentResponseValidator" id="RoyalPaymentResValidator" />
+								<choice id="RoyalSunPaymentResponse">
+						      <when id="RoyalSunPaymentResponseReq">
+							    <simple>${header.reqFlag} == "True"</simple>
+							<process ref="HealthPolicyReqProcessor" id="RSHealthPolicyReqProcessor" />
+							<to pattern="InOut" uri="mapper://mapdata" id="RSHealthPolicyReqMapper" />
+							<process ref="HealthPolicyReqHandler" id="ROYALHealthPolicyReqHandler" />
+							<process ref="ProposalReqDBStore" id="ROYALHealthProposalReqDBStore" />
+							<process ref="HealthPolicyResHandler" id="ROYALHealthPolicyRespHandler" />
+							<process ref="HealthPolicyLogProcessor" id="RoyalHealthLogProcessor5" />
+							<to pattern="InOut" uri="mapper://mapdata" id="RSHealthPolicyResMapperUI" />
+							<multicast>
+								<pipeline>
+									<process ref="HealthPolicyReqHandler" id="RSHealthPolicyRes" />
+									<process ref="UserProfileReqProcessor" id="RSHealthUserProfileReqProcessor" />
+								</pipeline>
+								<pipeline>
+									<process ref="HealthPolicyResLogProcessor" id="RoyalHealthPolicyResLogProcessor" />
+									<process ref="HealthPolicyReqHandler" id="RoyalHealthPolicyResHandler" />
+									<log
+										message="Royal Sundaram health policy HealthPolicyReqHandler Body : ${body}" />
+									<process ref="HealthPolicyResProcessor" id="ROYALHeathPolicyResProcessor" />
+									<bean ref="PolicySubmitServiceImpl" method="sendMessage"
+										id="ROYALHealthPolicyServiceResponse" />
+								</pipeline>
+							</multicast>
+							 </when>
+							   <when id="RoyalSunProposalUPDTError">
+									<simple>${header.reqFlag} == "False"</simple>
+									<log message="Royal Sun payment error " />
+									<bean ref="PolicySubmitServiceImpl" method="sendMessage" />
+							</when>
+						   </choice>
+						</pipeline>
+					</multicast>
+				</when>
+			</choice>
+		</route>
+			<route id="createProposalRoute">
+			<from uri="direct:proposalCreateRequest" />
+			<process ref="HealthProposalDBReqProcessor" id="RoyalHealthProposalDBReqProcessorBASE" />
+			<process ref="HealthPolicyLogProcessor" id="RoyalHealthLogProcessor6" />
+			<to pattern="InOut" uri="xpathmapper://xpathmapdata" id="RoyalPolicies365XPathMapperBASE" />
+			<process ref="ProposalReqDBStore" id="RoyalProposalReqDBStoreBASE" />
+			<process ref="ProposalResProcessor" id="RSProposalResProcessorBASE" />
+			<process ref="RSHealthResponseProcessor" id="RSHealthResponseProcessorBASE" />
+			<bean ref="ProposalSubmitServiceImpl" method="sendMessage"
+				id="RSHealthProposalResponseBASE" />
+			<marshal>
+				<json prettyPrint="true" library="Jackson" />
+			</marshal>
+		</route> 
+	</camelContext>
+</blueprint>

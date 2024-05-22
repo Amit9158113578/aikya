@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<blueprint xmlns="http://www.osgi.org/xmlns/blueprint/v1.0.0"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:camel="http://camel.apache.org/schema/blueprint"
+	xmlns:cxf="http://camel.apache.org/schema/blueprint/cxf" xmlns:jaxws="http://cxf.apache.org/blueprint/jaxws"
+	xmlns:cm="http://aries.apache.org/blueprint/xmlns/blueprint-cm/v1.0.0"
+	xmlns:camelcxf="http://camel.apache.org/schema/blueprint/cxf"
+	xsi:schemaLocation="
+       http://www.osgi.org/xmlns/blueprint/v1.0.0 http://www.osgi.org/xmlns/blueprint/v1.0.0/blueprint.xsd
+       http://camel.apache.org/schema/blueprint/cxf http://camel.apache.org/schema/blueprint/cxf/camel-cxf.xsd
+       http://cxf.apache.org/blueprint/jaxws http://cxf.apache.org/schemas/blueprint/jaxws.xsd
+       http://camel.apache.org/schema/blueprint  http://camel.apache.org/schema/blueprint/camel-blueprint-2.12.0.xsd">
+
+
+
+	<cxf:rsServer id="LeadsToCRMEndPoint" address="/leadsToCRMEndPoint"
+		serviceClass="com.idep.rest.service.LeadsToCRMService"
+		loggingFeatureEnabled="true">
+		<cxf:providers>
+			<bean
+				class="org.apache.cxf.rs.security.cors.CrossOriginResourceSharingFilter" />
+		</cxf:providers>
+	</cxf:rsServer>
+
+	<bean id="myRedeliveryPolicyConfig" class="org.apache.camel.processor.RedeliveryPolicy">
+		<property name="maximumRedeliveries" value="1" />
+		<property name="redeliveryDelay" value="5000" />
+		<property name="asyncDelayedRedelivery" value="true" />
+		<property name="retryAttemptedLogLevel" value="WARN" />
+	</bean>
+
+	<cm:property-placeholder persistent-id="AMQCustomProperties">
+	</cm:property-placeholder>
+
+	<bean id="jmsConnectionFactory" class="org.apache.activemq.ActiveMQConnectionFactory">
+		<property name="brokerURL" value="${amqbroker.host}:${amqbroker.port}" />
+		<property name="userName" value="${amqbroker.username}" />
+		<property name="password" value="${amqbroker.password}" />
+	</bean>
+
+	<bean id="pooledConnectionFactory" class="org.apache.activemq.pool.PooledConnectionFactory"
+		init-method="start" destroy-method="stop">
+		<property name="maxConnections" value="${amq.maxConnections}" />
+		<property name="connectionFactory" ref="jmsConnectionFactory" />
+	</bean>
+
+	<bean id="jmsConfig" class="org.apache.camel.component.jms.JmsConfiguration">
+		<property name="connectionFactory" ref="pooledConnectionFactory" />
+		<property name="concurrentConsumers" value="${amq.concurrentConsumers}" />
+		<property name="mapJmsMessage" value="${amq.mapJmsMessage}" />
+		<property name="maxConcurrentConsumers" value="${amq.maxConcurrentConsumers}" />
+		<property name="deliveryPersistent" value="true" />
+		<property name="acknowledgementModeName" value="CLIENT_ACKNOWLEDGE" />
+	</bean>
+
+	<bean id="activemq" class="org.apache.activemq.camel.component.ActiveMQComponent">
+		<property name="configuration" ref="jmsConfig" />
+		<property name="transacted" value="false" />
+	</bean>
+	<bean id="leadsToCRMServiceImpl" class="com.idep.impl.rest.LeadsToCRMServiceImpl" />
+	<bean id="UpdateLeadRequest" class="com.idep.icrmlead.req.processor.UpdateLeadRequest" />
+	<bean id="updateLeadresponse" class="com.idep.icrmlead.req.processor.UpdateLeadResponse" />
+	<bean id="iCRMQueueListener" class="com.idep.queue.icrmqueue.listener.iCRMQueueListener" />
+<bean id="LeadReqProcessor" class="com.idep.icrmlead.req.processor.LeadReqProcessor" />
+
+	<camelContext id="iCRMLeadsServiceContext"
+		xmlns="http://camel.apache.org/schema/blueprint">
+		<route id="leadsToCRMServiceRoute">
+			<from uri="cxfrs:bean:LeadsToCRMEndPoint" id="leadsToCRMEndPoint" />
+			<choice id="leadsCRMDecision">
+				<when id="LeadUpdateReq">
+					<simple id="updateLeads">${header.operationName} == "updateLeads"</simple>
+					<bean ref="leadsToCRMServiceImpl" method="updateLeads" id="updateLeads" />
+					<bean ref="UpdateLeadRequest" id="UpdateLeadRequest" />
+					<log message="Blueprint Pushing to iCRMQueue" />
+					<log id="sendingtoLeadsCRMQ" message="Blueprint storing into activemq:queue:iCRMQ" />
+					<to pattern="InOnly" uri="activemq:queue:iCRMQ" id="ICRMQ" />
+					<log message="Blueprint Sent to iCRMQueue" />
+				</when>
+			</choice>
+		</route>
+		<route id="iCRMQListener">
+			<from uri="activemq:queue:iCRMQ" id="iCRMQListener">
+				<description />
+			</from>
+			<log message="Blueprint Message reaing started from to iCRMQueue" />
+			<bean ref="iCRMQueueListener" method="onMessage" id="iCRMQueueListenerMSG" />
+			<process ref="LeadReqProcessor" id="LeadReqProcessor" />
+			<log message="Blueprint Message log" />
+			<process ref="updateLeadresponse" id="updateLeadresponse" />
+		</route>
+	</camelContext>
+</blueprint>
+	
+	
+	
+	

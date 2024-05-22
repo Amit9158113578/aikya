@@ -1,0 +1,212 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<blueprint xmlns="http://www.osgi.org/xmlns/blueprint/v1.0.0"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:camel="http://camel.apache.org/schema/blueprint"
+	xmlns:cxf="http://camel.apache.org/schema/blueprint/cxf" xmlns:jaxws="http://cxf.apache.org/blueprint/jaxws"
+	xmlns:cm="http://aries.apache.org/blueprint/xmlns/blueprint-cm/v1.0.0"
+	xmlns:camelcxf="http://camel.apache.org/schema/blueprint/cxf"
+	xsi:schemaLocation="
+       http://www.osgi.org/xmlns/blueprint/v1.0.0 http://www.osgi.org/xmlns/blueprint/v1.0.0/blueprint.xsd
+       http://camel.apache.org/schema/blueprint/cxf http://camel.apache.org/schema/blueprint/cxf/camel-cxf.xsd
+       http://cxf.apache.org/blueprint/jaxws http://cxf.apache.org/schemas/blueprint/jaxws.xsd
+       http://camel.apache.org/schema/blueprint  http://camel.apache.org/schema/blueprint/camel-blueprint-2.12.0.xsd">
+	<cxf:rsServer id="PolicyRenewalReminderEndPoint" address="/policyrenewalreminder"
+		serviceClass="com.idep.PolicyRenewalReminder.service.PolicyRenewalReminder"
+		loggingFeatureEnabled="true">
+		<cxf:providers>
+			<bean
+				class="org.apache.cxf.rs.security.cors.CrossOriginResourceSharingFilter" />
+		</cxf:providers>
+	</cxf:rsServer>
+
+	<cm:property-placeholder persistent-id="AMQCustomProperties">
+	</cm:property-placeholder>
+
+	<bean id="jmsConnectionFactory" class="org.apache.activemq.ActiveMQConnectionFactory">
+		<property name="brokerURL" value="${amqbroker.host}:${amqbroker.port}" />
+		<property name="userName" value="${amqbroker.username}" />
+		<property name="password" value="${amqbroker.password}" />
+	</bean>
+
+	<bean id="pooledConnectionFactory" class="org.apache.activemq.pool.PooledConnectionFactory"
+		init-method="start" destroy-method="stop">
+		<property name="maxConnections" value="${amq.maxConnections}" />
+		<property name="connectionFactory" ref="jmsConnectionFactory" />
+	</bean>
+
+	<bean id="jmsConfig" class="org.apache.camel.component.jms.JmsConfiguration">
+		<property name="connectionFactory" ref="pooledConnectionFactory" />
+		<property name="concurrentConsumers" value="${amq.concurrentConsumers}" />
+		<property name="mapJmsMessage" value="${amq.mapJmsMessage}" />
+		<property name="maxConcurrentConsumers" value="${amq.maxConcurrentConsumers}" />
+		<!-- <property name="asyncConsumer" value="${amq.asyncConsumer}" /> <property 
+			name="asyncStartListener" value="${amq.asyncStartListener}" /> -->
+	</bean>
+
+	<bean id="activemq" class="org.apache.activemq.camel.component.ActiveMQComponent">
+		<property name="configuration" ref="jmsConfig" />
+	</bean>
+
+	<!-- Mysql component -->
+	<cm:property-placeholder persistent-id="mysql"
+		placeholder-prefix="$(" placeholder-suffix=")" />
+
+	<bean id="dataSource" class="org.apache.commons.dbcp.BasicDataSource"
+		destroy-method="close">
+		<property name="driverClassName" value="$(mysql.driverName)" />
+		<property name="url" value="$(mysql.crmConnectionUrl)" />
+		<property name="username" value="$(mysql.userName)" />
+		<property name="password" value="$(mysql.crmPassword)" />
+	</bean>
+
+	<bean id="sql" class="org.apache.camel.component.sql.SqlComponent">
+		<property name="dataSource" ref="dataSource" />
+	</bean>
+	<!--End of Mysql component -->
+
+	<bean id="ReadEmailStatusQListener" class="com.idep.queue.listener.ReadEmailStatusQListener" />
+	<bean id="PolicyRenewalResponse" class="com.idep.PolicyRenewal.processor.PolicyRenewalRepsonse" />
+	<bean id="PolicyRenewalReminder"
+		class="com.idep.PolicyRenewalReminder.service.PolicyRenewalReminder" />
+	<bean id="PolicyRenewalReminderServiceImpl"
+		class="com.idep.PolicyRenewalReminder.service.PolicyRenewalReminderServiceImpl"></bean>
+	<bean id="PolicyReminderReqProcessor"
+		class="com.idep.PolicyRenewal.processor.PolicyReminderReqProcessor" />
+	<bean id="QuoteRequestPrepare" class="com.idep.PolicyRenewal.processor.QuoteRequestPrepare" />
+	<bean id="SMSEmailRequestPrepare" class="com.idep.PolicyRenewal.processor.SMSEmailRequestPrepare" />
+	<bean id="PolicyRenewalBussinessLineProcessor"
+		class="com.idep.PolicyRenewal.processor.PolicyRenewalBussinessLineProcessor" />
+	<bean id="BikeResProcessor" class="com.idep.PolicyRenewal.processor.BikeResProcessor" />
+	<bean id="CarResProcessor" class="com.idep.PolicyRenewal.processor.CarResProcessor" />
+	<bean id="RenewalLeadReqProcessor"
+		class="com.idep.PolicyRenewal.processor.RenewalLeadReqProcessor" />
+	<bean id="RenewalLeadResProcessor"
+		class="com.idep.PolicyRenewal.processor.RenewalLeadResProcessor" />
+	<bean id="EmailResponseProcessor" class="com.idep.PolicyRenewal.processor.EmailResponseProcessor" />
+	<bean id="RenewalResponse" class="com.idep.PolicyRenewal.processor.RenewalResponse" />
+	<bean id="UpdateRecordReqProcessor" class="com.idep.readEmailStatus.UpdateRecordReqProcessor" />
+	<bean id="UpdateEmailStatusProcessor" class="com.idep.readEmailStatus.UpdateEmailStatusProcessor" />
+	<bean id="UpdateLeadProcessor" class="com.idep.readEmailStatus.UpdateLeadProcessor" />
+	<bean id="ReadEmailStatusResponse" class="com.idep.readEmailStatus.ReadEmailStatusResponse" />
+
+	<bean id="OfflinePolicyReqProcessor" class="com.idep.OfflinePolicyRenewal.OfflinePolicyReqProcessor" />
+	<bean id="OfflineRenewalLeadReqprocessor"
+		class="com.idep.OfflinePolicyRenewal.OfflineRenewalLeadReqProcessor" />
+	<bean id="OfflineRenewalLeadResprocessor"
+		class="com.idep.OfflinePolicyRenewal.OfflineRenewalLeadResProcessor" />
+	<bean id="OfflineSMSEmailRequest" class="com.idep.OfflinePolicyRenewal.OfflineSMSEmailRequest" />
+	<bean id="OfflineRenewalResponseProcessor"
+		class="com.idep.OfflinePolicyRenewal.OfflineRenewalResponseProcessor" />
+
+	<!-- Offline renewal run beans -->
+	<bean id="RunOfflineRenewalManualReqProcessor"
+		class="com.idep.offline.reminder.manual.RunOfflineRenewalManualReqProcessor" />
+
+	<bean id="shutdownStrategy" class="org.apache.camel.impl.DefaultShutdownStrategy">
+		<property name="timeout" value="30" />
+	</bean>
+
+	<camelContext xmlns="http://camel.apache.org/schema/blueprint">
+		<propertyPlaceholder id="placeholder" location="classpath:sql.properties" />
+		<route id="PolicyRenewalReminderRoute">
+			<from uri="cxfrs:bean:PolicyRenewalReminderEndPoint" />
+			<choice id="PolicyRenewalChoice">
+				<when id="createRenewalLead">
+					<simple id="createRenewalMethod">${header.operationName} == "sendRenewalEmail"</simple>
+					<bean ref="PolicyRenewalReminderServiceImpl" method="PolicyReminderData"
+						id="PolicyRenewalReminderServiceImplBean" />
+					<process ref="PolicyReminderReqProcessor" id="ProcessPolicyReminderReq" />
+					<process ref="RenewalLeadReqProcessor" id="RenewalLeadReqProcessorClass" />
+					<process ref="RenewalLeadResProcessor" id="RenewalLeadResProcessorClass" />
+					<process ref="PolicyReminderReqProcessor" id="ProcessPolicyReminderReq" />
+					<choice>
+						<when>
+							<simple>${header.isQuotePerform} == "Y"</simple>
+							<process ref="QuoteRequestPrepare" id="QuoteRequestPrepareClass" />
+						</when>
+					</choice>
+					<process ref="SMSEmailRequestPrepare" id="EmailRequestPrepareClass" />
+					<to pattern="InOnly" uri="activemq:queue:Emails" id="sendPolicyRenewalEmail" />
+					<to pattern="InOnly" uri="activemq:queue:SMS" id="sendPolicyRenewalSMS" />
+					<process ref="EmailResponseProcessor" id="EmailResponseProcessorClass" />
+					<process ref="RenewalResponse" id="RenewalResponseClass" />
+				</when>
+				<when id="OffRenewalCreateLead">
+					<simple id="createLeadReq">${header.operationName} == "offlineRenewalReminder"</simple>
+					<log message="request recived createLead for renewal : ${body}" />
+					<bean ref="PolicyRenewalReminderServiceImpl" method="offlineRenewalReminder"
+						id="PolicyRenewalReminderServiceImplBean" />
+					<process ref="OfflinePolicyReqProcessor" id="OfflinePolicyReqProcessor" />
+					<process ref="OfflineRenewalLeadReqprocessor" id="OfflineRenewalLeadReqprocessor" />
+					<log message=" Blueprint Blueprint for PolicyRenewalReminderQueue: ${headers}" />
+					<when id="isOfflineRenewalFlag">
+						<simple id="isOfflineRenewalFlag">${header.isOfflineRenewalFlag} == "CallCentre"</simple>
+						<log message="Sending to RenewalQuueue" />
+						<to pattern="InOnly" uri="activemq:queue:RenewalQ" id="sendToRnewalQ" />
+						<log message="Sent to policy RenewalQuueue" />
+					</when>
+					<process ref="OfflineRenewalLeadResprocessor" id="OfflineRenewalLeadResprocessor" />
+					<process ref="OfflineSMSEmailRequest" id="OfflineSMSEmailRequest" />
+					<log message=" Blueprint for PolicyRenewalReminderQueue: ${body} " />
+					<!-- <choice> <when> <simple>${header.isEmailPresent} == "Y"</simple> 
+						<to pattern="InOnly" uri="activemq:queue:Emails" id="sendPolicyRenewalEmail" 
+						/> </when> </choice> <to pattern="InOnly" uri="activemq:queue:SMS" id="sendPolicyRenewalSMS" 
+						/> -->
+					<process ref="OfflineRenewalResponseProcessor" id="OfflineRenewalResponse" />
+				</when>
+				<when id="RenewalProposalData">
+					<simple id="proposalDataReq">${header.operationName} == "getProposalData"</simple>
+					<log message="request recived getProposalData : ${body}" />
+					<bean ref="PolicyRenewalReminderServiceImpl" method="PolicyReminderData"
+						id="PolicyRenewalReminderServiceImplBean" />
+					<bean ref="PolicyRenewalBussinessLineProcessor" id="PolicyRenewalBussinessLineProcessorClass" />
+					<choice>
+						<when>
+							<simple>${header.LOB} == "Bike"</simple>
+							<bean ref="BikeResProcessor" id="BikeResProcessorClass" />
+						</when>
+						<when>
+							<simple>${header.LOB} == "Car"</simple>
+							<bean ref="CarResProcessor" id="BikeResProcessorClass" />
+						</when>
+					</choice>
+				</when>
+				<when id="ReadEmailStatus">
+					<simple id="ReadEmailStatusReq">${header.operationName} == "getEmailStatus"</simple>
+					<log message="readEmailStatus Request Received : ${body}" id="ReadEmailStatusLog" />
+					<bean ref="PolicyRenewalReminderServiceImpl" method="readEmailStatus"
+						id="PolicyRenewalReminderServiceImplBean" />
+					<to pattern="InOnly" uri="activemq:queue:ReadEmailStatus" id="ReadEmailStatusQ" />
+					<process ref="ReadEmailStatusResponse" id="ReadEmailStatusResponseClass" />
+				</when>
+				<when id="manualOfflineRenewal">
+					<simple id="runOfflineRenewalMethod">${header.operationName} == "runOfflineRenewal"</simple>
+					<log message="runOfflineRenewal Request Received : ${body}" id="ReadEmailStatusLog" />
+					<bean ref="PolicyRenewalReminderServiceImpl" method="runOfflineReminderManual"
+						id="runOfflineReminderManualMethod" />
+					<process ref="RunOfflineRenewalManualReqProcessor" id="RunOfflineReqProcessor" />
+					<to uri="sql:{{query.findPolicyByMobile}}" />
+					<transform>
+						<method ref="RunOfflineRenewalManualReqProcessor" method="prepareOfflineRenewalRequest" />
+					</transform>
+				</when>
+			</choice>
+		</route>
+		<route id="ReadEmailStatusReoute">
+			<from uri="activemq:queue:ReadEmailStatus" id="ReadEmailStatusQListener">
+				<description />
+			</from>
+			<log message="message reading started from read eamil queue" />
+			<bean ref="ReadEmailStatusQListener" method="onMessage"
+				id="ReadEmailStatusQListenerClass" />
+			<process ref="UpdateRecordReqProcessor" id="UpdateRecordReqProcessorClass" />
+			<process ref="UpdateEmailStatusProcessor" id="UpdateEmailStatusProcessorClass" />
+			<choice>
+				<when>
+					<simple>${header.updateLead} == "Yes"</simple>
+					<process ref="UpdateLeadProcessor" id="UpdateLeadProcessorClass" />
+				</when>
+			</choice>
+		</route>
+	</camelContext>
+
+</blueprint>

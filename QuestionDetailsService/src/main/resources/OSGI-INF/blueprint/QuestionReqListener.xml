@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<blueprint xmlns="http://www.osgi.org/xmlns/blueprint/v1.0.0"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xmlns:cxf="http://camel.apache.org/schema/blueprint/cxf"
+       xsi:schemaLocation="
+       http://www.osgi.org/xmlns/blueprint/v1.0.0 http://www.osgi.org/xmlns/blueprint/v1.0.0/blueprint.xsd
+        http://camel.apache.org/schema/blueprint/cxf http://camel.apache.org/schema/blueprint/cxf/camel-cxf.xsd
+       http://camel.apache.org/schema/blueprint http://camel.apache.org/schema/blueprint/camel-blueprint.xsd">
+ 
+<cxf:rsServer id="HealthQuestionEndpoint" address="/healthqueslistenerservice" serviceClass="com.idep.healthquestion.service.HealthQuestionCalcService" loggingFeatureEnabled="true">
+<cxf:providers>
+        <bean class="org.apache.cxf.rs.security.cors.CrossOriginResourceSharingFilter" />
+</cxf:providers>
+</cxf:rsServer>
+
+  
+<bean id="HealthQuestionshutdownStrategy" class="org.apache.camel.impl.DefaultShutdownStrategy">
+        <property name="timeout" value="30"></property>
+</bean>
+
+<bean id="HealthQuestionCalcServiceImpl" class="com.idep.healthquote.impl.service.HealthQuestionCalcServiceImpl" />
+<bean id="HealthQuestionReqProcessor" class="com.idep.healthquestion.req.processor.HealthQuestionReqProcessor" />
+<bean id="HealthDocumentTypeProcessor" class="com.idep.healthquestion.req.processor.HealthDocumentTypeProcessor" />
+<bean id="HealthDiseaseReqProcessor" class="com.idep.healthquestion.req.processor.HealthDiseaseReqProcessor" />
+<bean id="TravelQuestionReqProcessor" class="com.idep.healthquestion.req.processor.TravelQuestionReqProcessor" />
+<bean id="TravelDiseaseReqProcessor" class="com.idep.healthquestion.req.processor.TravelDiseaseReqProcessor" />
+<bean id="LifeQuestionReqProcessor" class="com.idep.healthquestion.req.processor.LifeQuestionReqProcessor" />
+<bean id="LifeDiseaseReqProcessor" class="com.idep.healthquestion.req.processor.LifeDiseaseReqProcessor" />
+<bean id="LifeJobReqProcessor" class="com.idep.healthquestion.req.processor.LifeJobReqProcessor" />
+<bean id="PersonalAccidentQuestionReqProcessor" class="com.idep.healthquestion.req.processor.PersonalAccidentQuestionReqProcessor" />
+<bean id="PersonalAccidentDiseaseReqProcessor" class="com.idep.healthquestion.req.processor.PersonalAccidentDiseaseReqProcessor" />
+
+<camelContext threadNamePattern="HealthQues:#counter#" id="QuestionReqListener" xmlns="http://camel.apache.org/schema/blueprint">
+  <route id="HealthQuestionCalculatorRoute">
+    <from uri="cxfrs:bean:HealthQuestionEndpoint"/>
+    <log message="Health Question Request Listener service"/>
+    <bean ref="HealthQuestionCalcServiceImpl" method="calculateQuote" id="HealthQuoteReqBean"/>
+    <process ref="HealthDocumentTypeProcessor" id="HealthDocumentTypeProcessor"/>
+    <choice id="HealthDiseaseDecision">
+      <when id="HealthDiseaseCalcReq">
+        <simple>${header.documentType} == "DiseaseMapping"</simple>
+        <log message="Health Disease Request Recevided"/>
+        <process ref="HealthDiseaseReqProcessor" id="HealthDiseaseReqProcessor"/>
+      </when>
+      <when id="HealthDiseaseQustReq">
+        <simple>${header.documentType} == "DiseaseQuestion"</simple>
+        <process ref="HealthQuestionReqProcessor" id="HealthQuestionReqProcessor"/>
+      </when>
+       <when id="HealthDiseaseQustReq">
+        <simple>${header.documentType} == "TravelDiseaseQuestion"</simple>
+        <process ref="TravelQuestionReqProcessor" id="travelQuestionReqProcessor"/>
+      </when>
+       <when id="TravelDiseaseQustReq">
+        <simple>${header.documentType} == "TravelDiseaseMapping"</simple>
+        <process ref="TravelDiseaseReqProcessor" id="travelQuestionReqProcessor"/>
+      </when>
+       <when id="LifeDiseaseMapping">
+        <simple>${header.documentType} == "LifeDiseaseMapping"</simple>
+        <log message="LifeDiseaseMappingRequest Recevided"/>
+        <process ref="LifeDiseaseReqProcessor" id="lifeDiseaseReqProcessor"/>
+      </when>
+      <when id="LifeJobMapping">
+        <simple>${header.documentType} == "LifeJobMapping"</simple>
+        <log message="LifeJobMapping Recevided"/>
+        <process ref="LifeJobReqProcessor" id="lifeJobReqProcessor"/>
+      </when>
+      <when id="LifeDiseaseQuestion">
+        <simple>${header.documentType} == "LifeDiseaseQuestion"</simple>
+        <log message="LifeDiseaseQuestion Request Recevided"/>
+        <process ref="LifeQuestionReqProcessor" id="lifeQuestionReqProcessor"/>
+      </when>
+      <when id="PersonalAccidentQuestion">
+        <simple>${header.documentType} == "PersonalAccidentDiseaseQuestion"</simple>
+        <log message="PersonalAccidentQuestionReqProcessor Request Recevided"/>
+        <process ref="PersonalAccidentQuestionReqProcessor" id="PersonalAccidentQuestionReqProcessor"/>
+      </when>
+      <when id="PersonalAccidentDiseaseMapping">
+        <simple>${header.documentType} == "PersonalAccidentDiseaseMapping"</simple>
+        <log message="PersonalAccidentQuestionReqProcessor Request Recevided"/>
+        <process ref="PersonalAccidentDiseaseReqProcessor" id="PersonalAccidentDiseaseReqProcessor"/>
+      </when>
+    </choice>
+    <marshal>
+      <json prettyPrint="true" library="Jackson"/>
+    </marshal>
+  </route>
+</camelContext>
+</blueprint>

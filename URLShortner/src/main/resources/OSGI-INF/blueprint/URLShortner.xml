@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<blueprint xmlns="http://www.osgi.org/xmlns/blueprint/v1.0.0"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:camel="http://camel.apache.org/schema/blueprint"
+	xmlns:cxf="http://camel.apache.org/schema/blueprint/cxf" xmlns:jaxws="http://cxf.apache.org/blueprint/jaxws"
+	xmlns:cm="http://aries.apache.org/blueprint/xmlns/blueprint-cm/v1.0.0"
+	xmlns:camelcxf="http://camel.apache.org/schema/blueprint/cxf"
+	xsi:schemaLocation="
+       http://www.osgi.org/xmlns/blueprint/v1.0.0 http://www.osgi.org/xmlns/blueprint/v1.0.0/blueprint.xsd
+       http://camel.apache.org/schema/blueprint/cxf http://camel.apache.org/schema/blueprint/cxf/camel-cxf.xsd
+       http://cxf.apache.org/blueprint/jaxws http://cxf.apache.org/schemas/blueprint/jaxws.xsd
+       http://camel.apache.org/schema/blueprint  http://camel.apache.org/schema/blueprint/camel-blueprint-2.12.0.xsd">
+
+	<cxf:rsServer id="URLShortnerEndPoint" address="/urlshortnerservice"
+		serviceClass="com.idep.urlshortner.rest.URLShortnerService"
+		loggingFeatureEnabled="true">
+		<cxf:providers>
+			<bean
+				class="org.apache.cxf.rs.security.cors.CrossOriginResourceSharingFilter" />
+		</cxf:providers>
+	</cxf:rsServer>
+
+	<bean id="myDeadLetterErrorHandler" class="org.apache.camel.builder.DeadLetterChannelBuilder">
+		<property name="deadLetterUri" value="activemq:queue:DLQ" />
+		<property name="redeliveryPolicy" ref="myRedeliveryPolicyConfig" />
+	</bean>
+
+	<bean id="myRedeliveryPolicyConfig" class="org.apache.camel.processor.RedeliveryPolicy">
+		<property name="maximumRedeliveries" value="5" />
+		<property name="redeliveryDelay" value="20000" />
+	</bean>
+
+	<cm:property-placeholder persistent-id="AMQCustomProperties">
+	</cm:property-placeholder>
+
+	<bean id="jmsConnectionFactory" class="org.apache.activemq.ActiveMQConnectionFactory">
+		<property name="brokerURL" value="${amqbroker.host}:${amqbroker.port}" />
+		<property name="userName" value="${amqbroker.username}" />
+		<property name="password" value="${amqbroker.password}" />
+	</bean>
+
+	<bean id="pooledConnectionFactory" class="org.apache.activemq.pool.PooledConnectionFactory"
+		init-method="start" destroy-method="stop">
+		<property name="maxConnections" value="${amq.maxConnections}" />
+		<property name="connectionFactory" ref="jmsConnectionFactory" />
+	</bean>
+
+	<bean id="jmsConfig" class="org.apache.camel.component.jms.JmsConfiguration">
+		<property name="connectionFactory" ref="pooledConnectionFactory" />
+		<property name="concurrentConsumers" value="${amq.concurrentConsumers}" />
+		<property name="mapJmsMessage" value="${amq.mapJmsMessage}" />
+		<property name="maxConcurrentConsumers" value="${amq.maxConcurrentConsumers}" />
+		<property name="asyncConsumer" value="${amq.asyncConsumer}" />
+		<property name="asyncStartListener" value="${amq.asyncStartListener}" />
+	</bean>
+
+	<bean id="activemq" class="org.apache.activemq.camel.component.ActiveMQComponent">
+		<property name="configuration" ref="jmsConfig" />
+	</bean>
+
+	<bean id="URLShortnerImpl" class="com.idep.urlshortner.impl.URLShortnerImpl" />
+	<bean id="URLShortnerService" class="com.idep.urlshortner.rest.URLShortnerService" />
+	<bean id="URLShortnerReqProcessor" class="com.idep.urlshortner.processor.URLShortnerReqProcessor" />
+	<bean id="URLShortnerResProcessor" class="com.idep.urlshortner.processor.URLShortnerResProcessor" />
+
+	<bean id="shutdownStrategy" class="org.apache.camel.impl.DefaultShutdownStrategy">
+		<property name="timeout" value="30" />
+	</bean>
+
+	<camelContext id="URLShortnerContext"
+		xmlns="http://camel.apache.org/schema/blueprint">
+		<route id="URLShortnerRoute">
+			<from uri="cxfrs:bean:URLShortnerEndPoint" id="URLShortnerServiceEndPoint" />
+			<choice id="URLDecision">
+				<when id="URLShortReq">
+					<simple id="collectLeadData">${header.operationName} == "getShortURL"</simple>
+					<log id="getshorturllog" message="Get Short URL Req : ${body}" />
+					<bean ref="URLShortnerImpl" method="getShortURL" id="getShortURLMethod" />
+					<process ref="URLShortnerReqProcessor" id="URLShortnerReqProcessorClass" />
+					<process ref="URLShortnerResProcessor" id="URLShortnerResProcessorClass" />
+					<marshal>
+						<json prettyPrint="true" library="Jackson" />
+					</marshal>
+				</when>
+			</choice>
+		</route>
+	</camelContext>
+</blueprint>

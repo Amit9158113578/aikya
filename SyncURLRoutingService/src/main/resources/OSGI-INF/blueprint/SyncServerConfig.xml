@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<blueprint xmlns="http://www.osgi.org/xmlns/blueprint/v1.0.0"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xmlns:camel="http://camel.apache.org/schema/blueprint"
+       xmlns:cxf="http://camel.apache.org/schema/blueprint/cxf"
+	   xmlns:cm="http://aries.apache.org/blueprint/xmlns/blueprint-cm/v1.1.0"
+       xmlns:jaxrs="http://cxf.apache.org/blueprint/jaxrs" 
+       xsi:schemaLocation=" 
+       http://www.osgi.org/xmlns/blueprint/v1.0.0 http://www.osgi.org/xmlns/blueprint/v1.0.0/blueprint.xsd
+       http://camel.apache.org/schema/blueprint/cxf http://camel.apache.org/schema/blueprint/cxf/camel-cxf.xsd
+       http://cxf.apache.org/blueprint/jaxrs http://cxf.apache.org/schemas/blueprint/jaxrs.xsd
+       http://camel.apache.org/schema/blueprint http://camel.apache.org/schema/blueprint/camel-blueprint.xsd">
+
+<cxf:rsServer id="configURLRoutingEndpoint"  address="/serverconfig" serviceClass="com.idep.url.reroute.service.ServerConfigRequestRouter" loggingFeatureEnabled="true" >
+<cxf:providers>
+        <bean class="org.apache.cxf.rs.security.cors.CrossOriginResourceSharingFilter" />
+</cxf:providers>
+</cxf:rsServer>
+
+<bean id="ServerConfigShutdownStrategy" class="org.apache.camel.impl.DefaultShutdownStrategy">
+        <property name="timeout" value="30"/>
+</bean>
+
+<bean id="ServerConfigReqHandler" class="com.idep.url.reroute.processor.ServerConfigReqHandler"/>
+
+ <camelContext  xmlns="http://camel.apache.org/schema/blueprint">
+    
+    <onException useOriginalMessage="false">
+    <exception>org.apache.camel.component.http4.HttpOperationFailedException</exception>
+    <handled>
+      <constant>true</constant>
+    </handled>
+    <log message="server config HTTP operation failed message : ${body}"/>
+    <process ref="HttpErrorProcessor" id="ConfigHttpErrorProcessor"/>
+  	</onException>
+  	<onException useOriginalMessage="false">
+    <exception>org.apache.camel.component.netty4.http.NettyHttpOperationFailedException</exception>
+    <handled>
+      <constant>true</constant>
+    </handled>
+    <log message="server config Netty HTTP operation failed message : ${body}"/>
+    <process ref="HttpErrorProcessor" id="NettyConfigHttpErrorProcessor"/>
+  	</onException>
+  
+    <route id="ConfigURLRouting">
+      <from uri="cxfrs:bean:configURLRoutingEndpoint"/>
+      <log message="SYNC : server config request received :: ${body}"/>
+      <process ref="ServerConfigReqHandler" id="ServerConfigReqHandlerProcessor"/>
+      <recipientList stopOnException="false" id="ConfigSyncInvoke">
+	          <simple>${header.serverconfigurl}</simple>
+	  </recipientList> 
+      <process ref="ResponseProcessor" id="ServerConfigResponseProcessor"/>
+    </route>
+  
+</camelContext>
+
+</blueprint>

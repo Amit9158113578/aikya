@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<blueprint xmlns="http://www.osgi.org/xmlns/blueprint/v1.0.0"
+       xmlns:camel="http://camel.apache.org/schema/blueprint"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xsi:schemaLocation="http://www.osgi.org/xmlns/blueprint/v1.0.0 http://www.osgi.org/xmlns/blueprint/v1.0.0/blueprint.xsd
+       http://camel.apache.org/schema/blueprint http://camel.apache.org/schema/blueprint/camel-blueprint.xsd">
+
+
+<camelContext trace="false"  streamCache="true" threadNamePattern="ABHI:#counter#"  id="ABHIHealthReqQContext" xmlns="http://camel.apache.org/schema/blueprint">
+  <onException>
+    <exception>java.net.SocketTimeoutException</exception>
+    <handled>
+      <constant>true</constant>
+    </handled>
+    <log message="Aditya Birla Health service not responded within stipulated time frame"/>
+    <process ref="ExceptionMQMSGProcessor" customId="true" id="ABHIHealthExceptionMQMSGProcessor"/>
+    <to pattern="InOnly" uri="activemq:queue:AdityaBirlaHealthResQ?timeToLive=120000&amp;includeSentJMSMessageID=true"/>
+  </onException>
+  <onException>
+    <exception>com.idep.healthquote.exception.processor.ExecutionTerminator</exception>
+    <exception>java.lang.Exception</exception>
+    <handled>
+      <constant>true</constant>
+    </handled>
+    <log message="Aditya Birla Health quote process terminated"/>
+    <process ref="ExceptionMQMSGProcessor" customId="true" id="AdityaBirlaHealthExceptionMQMSGProcessor"/>
+    <to pattern="InOnly" uri="activemq:queue:AdityaBirlaHealthResQ?timeToLive=120000&amp;includeSentJMSMessageID=true"/>
+  </onException>
+  <route id="ABHIHealthReqQListener">
+    <from uri="activemq:queue:AdityaBirlaHealthReqQ" id="FromAdityaBirlaHealthResQReqQ">
+      <description/>
+    </from>
+    <bean ref="P365HealthReqQListener" method="onMessage" id="AdityaBirlaHealthReqQBean"/>
+    <process ref="IterateFamilyAsIndividual" id="IterateAsIndividual"/>
+    <process ref="HealthRequestQProcessor" id="AdityaBirlaHealthReqQProcessor"/>
+	 <process ref="ABHIDiamondDecideRouteProcessor" id="AdityaBirlaDiamondDecideRouteProcessor"/>
+	 <process ref="HealthQuoteLoggerProcessor" id="ABHIQuoteLoggerProcessor1"/>
+    <log message="After ABHIDiamondDecideRouteProcessor:"/>
+    
+    <choice id="ABHIGetPlanDecision">
+    <when id="ABHIGetPlan">
+    <simple>${header.carrierServiceApplicable} == "Y"</simple>
+    <log message="After ABHIDiamondDecideRouteProcessor in choice tag"/>
+     <process ref="HealthDroolReqServiceTaxProcessor" id="ABHIReqServiceTaxQProcessor"/>
+     <process ref="DroolReqFormProcessor" id="ABHIDroolReqProcessor"/>
+     <process ref="HealthQuoteLoggerProcessor" id="ABHIQuoteLoggerProcessor2"/>
+     <log message="After HealthQuoteLoggerProcessor : ${body} "/>
+     <log message="After HealthQuoteLoggerProcessor headers : ${headers} "/>
+    <recipientList>
+      <simple>${header.quoteURL}</simple>
+    </recipientList>
+    <log message="before HealthQuoteResponse : ${body} "/>
+    <bean ref="HealthQuoteResponse" method="sendQuoteResponse"/>
+    <process ref="DroolResponseFormProcessor" id="ABHIDroolResFormProcessor"/>
+    <process ref="DroolQuoteResRiderProcessor" id="ABHIDroolQuoteResRiderProcessor"/>
+    <process ref="CalculateDOBMinMaxProcessor" id="ABHIMemberDOBProcessor"/>
+    <process ref="PremiumRatioCalculateProcessor" id="AHIDroolPremiumRatioCalc"/>
+      <process ref="HealthQuoteResponseProcessor" id="ABHIQuoteResponseProcessor"/>
+      <process ref="HealthQuoteLoggerProcessor" id="ABHIQuoteLoggerProcessor3"/>
+      <log message="ABHIQuoteResProcessor finished with response"/>
+    </when>
+     <when id="ABHIGetPlanUsingClientService">
+     <simple>${header.carrierServiceApplicable} == "N"</simple>
+     <log message="Using client webservice"/>
+     <process ref="ExternalServiceReqProcessor" id="ABHIServiceReqProcessor"/>
+    <process ref="AdityaBirlaInsuredListProcessor" id="ABHIServiceInsuredListProcessor"/>
+    <process ref="ABHIMemberCodeProcessor" id="ABHIMemberCodeProcessor"/>
+    <process ref="CarrierDataLoader" id="CarrierDataLoader"/>
+    <to pattern="InOut" uri="xpathmapper://xpathmapdata" id="ABHIHealthReqMapper"/>
+    <process ref="ProductComponentsProcessor" id="ABHIComponentProcessor"/>
+    <process ref="CarrierTransformReqCollector" id="ABHIHealthTransformReqCollector"/>
+    <process ref="CarrierQuoteServiceReqLogger" id="ABHIQuoteServLoggerProcessor"/>
+    <log message="before webservconsumer in ABHI: ${body}"/>
+    <to pattern="InOut" uri="webservconsumer://invoke" id="AdityaBirlaHealthQUOTEURL"/>
+    <log message="after webservconsumer in ABHI: ${body}"/>
+    <process ref="CarrierServiceResponseHnadler" id="ABHIServiceResProcessor"/>
+    <to pattern="InOut" uri="mapper://mapdata"/>
+    <process ref="ABHIQuoteResProcessor" id="ABHIQuoteResProcessorid"/>
+     <process ref="CalculateDOBMinMaxProcessor" id="ABHIMemberDOBProcessor"/>
+     <process ref="PremiumRatioCalculateProcessor" id="AHIPremiumRatioCalculateProcessor"/>
+    <process ref="ExternalServiceResProcessor" id="ABHIServiceFinalResProcessor"/>
+    <process ref="HealthQuoteLoggerProcessor" id="ABHIQuoteLoggerProcessor4"/>
+     </when>
+    </choice>
+   
+    <multicast id="ABHIHealthQuoteResponseMSG">
+      <pipeline>
+        <log message="request/response sent to save ABHI  quote in database"/>
+        <process ref="HealthQuoteDBSender" id="ABHIHealthQuoteDBSender"/>
+        <to pattern="InOnly" uri="activemqSecondary:queue:HealthQuoteResultsQ"/>
+        <process ref="HealthQuoteLoggerProcessor" id="ABHIQuoteLoggerProcessor5"/>
+      </pipeline>
+      <pipeline>
+      <process ref="CarrierQuoteServiceResLogger" id="ABHIQuoteServiceResLogger"/>
+        <process ref="MQMsgProcessor" id="ABHIHlthMQMsgReqProcessor"/>
+        <!-- <wireTap uri="activemqSecondary:queue:AdityaBirlaHealthResQ?includeSentJMSMessageID=true"/> -->
+        <to pattern="InOnly" uri="activemq:queue:AdityaBirlaHealthResQ?timeToLive=120000&amp;includeSentJMSMessageID=true"/>
+        <process ref="HealthQuoteLoggerProcessor" id="ABHIQuoteLoggerProcessor6"/>
+      </pipeline>
+    </multicast>
+    
+    </route>
+  </camelContext>
+
+</blueprint>

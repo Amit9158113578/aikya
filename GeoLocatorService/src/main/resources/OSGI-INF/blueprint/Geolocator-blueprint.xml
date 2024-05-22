@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<blueprint xmlns="http://www.osgi.org/xmlns/blueprint/v1.0.0"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:camel="http://camel.apache.org/schema/blueprint"
+	xmlns:cxf="http://camel.apache.org/schema/blueprint/cxf" xmlns:jaxrs="http://cxf.apache.org/blueprint/jaxrs"
+	xmlns:cm="http://aries.apache.org/blueprint/xmlns/blueprint-cm/v1.0.0"
+	xsi:schemaLocation=" 
+       http://www.osgi.org/xmlns/blueprint/v1.0.0 http://www.osgi.org/xmlns/blueprint/v1.0.0/blueprint.xsd
+       http://camel.apache.org/schema/blueprint/cxf http://camel.apache.org/schema/blueprint/cxf/camel-cxf.xsd
+       http://cxf.apache.org/blueprint/jaxrs http://cxf.apache.org/schemas/blueprint/jaxrs.xsd
+       http://camel.apache.org/schema/blueprint http://camel.apache.org/schema/blueprint/camel-blueprint.xsd">
+
+	<cxf:rsServer id="geoLocatorRequestEndPoint" address="/geolocator"
+		serviceClass="com.idep.geolocator.service.GeoLocatorService"
+		loggingFeatureEnabled="true">
+		<cxf:providers>
+			<bean
+				class="org.apache.cxf.rs.security.cors.CrossOriginResourceSharingFilter" />
+		</cxf:providers>
+	</cxf:rsServer>
+
+	<bean id="GeoLocator" class="com.idep.geolocator.impl.GeoLocator"></bean>
+
+	<camelContext streamCache="true" id="GeolocatorService" xmlns="http://camel.apache.org/schema/blueprint">
+  <route id="GeolocatorRoute">
+    <from uri="cxfrs:bean:geoLocatorRequestEndPoint" id="GeoLocatorRequestEndPoint">
+      <description/>
+    </from>
+    <log message="Geo Locator Service Invoked : ${body}" id="GeolocatorRequestLogger"/>
+    <process ref="GeoLocator" id="GeoLocator"/>
+    <log message="Geo Locator Response : ${body}" id="GeolocatorResponseLogger"/>
+  </route>
+</camelContext>
+</blueprint>

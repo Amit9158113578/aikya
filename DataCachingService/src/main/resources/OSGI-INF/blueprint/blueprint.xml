@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<blueprint xmlns="http://www.osgi.org/xmlns/blueprint/v1.0.0"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xmlns:cxf="http://camel.apache.org/schema/blueprint/cxf"
+       xsi:schemaLocation="
+       http://www.osgi.org/xmlns/blueprint/v1.0.0 http://www.osgi.org/xmlns/blueprint/v1.0.0/blueprint.xsd
+        http://camel.apache.org/schema/blueprint/cxf http://camel.apache.org/schema/blueprint/cxf/camel-cxf.xsd
+       http://camel.apache.org/schema/blueprint http://camel.apache.org/schema/blueprint/camel-blueprint.xsd">
+
+
+  <bean id="DocumentDataConfig" class="com.idep.data.searchconfig.cache.DocumentDataConfig"/>
+  <bean id="PopularCityCache" class="com.idep.data.rto.cache.PopularCityCache"/>
+  <bean id="BikeQuoteConfigCache" class="com.idep.service.quote.cache.BikeQuoteConfigCache"/> 
+  <bean id="CarQuoteConfigCache" class="com.idep.service.quote.cache.CarQuoteConfigCache"/>
+  <bean id="RidersDataCache" class="com.idep.data.searchconfig.cache.RidersDataCache"/>
+  <bean id="VehicleDataCache" class="com.idep.data.searchconfig.cache.VehicleDataCache"/>
+  <bean id="CarrierDataCache" class="com.idep.data.searchconfig.cache.CarrierDataCache"/>
+  <bean id="RTODataCache" class="com.idep.data.searchconfig.cache.RTODataCache"/>
+  <bean id="SearchConfigCache" class="com.idep.data.searchconfig.cache.SearchConfigCache"/>
+  <bean id="ProductDataConfigCache" class="com.idep.productconfig.data.cache.ProductDataConfigCache"/>
+  
+  
+
+  <camelContext allowUseOriginalMessage="false" id="DataCacheContext" xmlns="http://camel.apache.org/schema/blueprint">
+    <route id="DataCaching">
+      <from uri="direct:datacachingbyp365"/>
+      <log message="data caching invoked"/>
+    </route>
+  </camelContext>
+
+</blueprint>

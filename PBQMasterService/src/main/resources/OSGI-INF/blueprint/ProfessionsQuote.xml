@@ -1,0 +1,160 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<blueprint xmlns="http://www.osgi.org/xmlns/blueprint/v1.0.0"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xmlns:cm="http://aries.apache.org/blueprint/xmlns/blueprint-cm/v1.1.0"
+       xmlns:cxf="http://camel.apache.org/schema/blueprint/cxf"
+       xsi:schemaLocation="
+       http://www.osgi.org/xmlns/blueprint/v1.0.0 http://www.osgi.org/xmlns/blueprint/v1.0.0/blueprint.xsd
+        http://camel.apache.org/schema/blueprint/cxf http://camel.apache.org/schema/blueprint/cxf/camel-cxf.xsd
+       http://camel.apache.org/schema/blueprint http://camel.apache.org/schema/blueprint/camel-blueprint.xsd">
+ 
+ <cxf:rsServer id="ProfessionQuoteEndpoint" address="/professionservice" serviceClass="com.idep.profession.quote.service.ProfessionQuoteService" loggingFeatureEnabled="true">
+<cxf:providers>
+        <bean class="org.apache.cxf.rs.security.cors.CrossOriginResourceSharingFilter" />
+</cxf:providers>
+</cxf:rsServer>
+
+<bean id="ProfessionQuoteServiceImpl" class="com.idep.profession.quote.serviceImpl.ProfessionQuoteServiceImpl"/>
+<bean id="ProfessionRequestProcessor" class="com.idep.profession.quote.req.processor.ProfessionRequestProcessor"/>
+<bean id="ProfQuoteResponse" class="com.idep.profession.quote.res.ProfQuoteResponse"/>
+<bean id="SelectedProductProcessor" class="com.idep.profession.quote.req.processor.SelectedProductProcessor"/>
+<bean id="PBReqConverterValidation" class="com.idep.profession.request.validation.PBReqConverterValidation" />
+<bean id="GetAddressRiskProcessor" class="com.idep.profession.request.validation.GetAddressRiskProcessor" />
+<bean id="ProfessionalQuoteDBStore" class="com.idep.profession.quote.DB.ProfessionalQuoteDBStore" />
+<bean id="RiskQuoteDBStore" class="com.idep.profession.quote.DB.RiskQuoteDBStore" />
+<bean id="ALGRequestProcessor" class="com.idep.profession.quote.req.processor.ALGRequestProcessor" />
+<!-- <bean id="RiskAssessmentConfigData" class="com.idep.professionalrecomengine.riskdata.RiskAssessmentConfigData"/>
+<bean id="InputRequestParsing" class="com.idep.professionalrecomengine.reqparsing.InputRequestParsing"/>- -->
+<bean id="PBQuoteListener" class="com.idep.profession.request.validation.PBQuoteListener"/>
+<bean id="ProfAppExceptionProcessor" class="com.idep.profession.exception.ProfAppExceptionProcessor"/>
+
+<cm:property-placeholder persistent-id="AMQCustomProperties"> 
+ </cm:property-placeholder> 
+
+<bean id="jmsConnectionFactory"
+   class="org.apache.activemq.ActiveMQConnectionFactory">
+   <property name="brokerURL" value="${amqbroker.host}:${amqbroker.port}" />
+   <property name="userName" value="${amqbroker.username}"/>
+   <property name="password" value="${amqbroker.password}"/>
+</bean>
+ 
+<bean id="pooledConnectionFactory"
+   class="org.apache.activemq.pool.PooledConnectionFactory" init-method="start" destroy-method="stop">
+   <property name="maxConnections" value="${amq.maxConnections}" />
+   <property name="connectionFactory" ref="jmsConnectionFactory" />
+</bean>
+
+<bean id="jmsConfig"
+   class="org.apache.camel.component.jms.JmsConfiguration">
+   <property name="connectionFactory" ref="pooledConnectionFactory"/>
+   <property name="concurrentConsumers" value="${amq.concurrentConsumers}"/>
+   <property name="mapJmsMessage" value="${amq.mapJmsMessage}" />
+   <property name="maxConcurrentConsumers" value="${amq.maxConcurrentConsumers}" />
+   <property name="asyncConsumer" value="${amq.asyncConsumer}" />
+   <property name="asyncStartListener" value="${amq.asyncStartListener}" />  
+</bean>
+ 
+ <bean id="activemq"
+    class="org.apache.activemq.camel.component.ActiveMQComponent">
+    <property name="configuration" ref="jmsConfig"/>
+    <property name="transacted" value="${amq.transacted}"/>
+    <property name="cacheLevelName" value="${amq.cacheLevelName}" />
+</bean>
+
+<bean id="jmsConnectionFactorySecondary"
+   class="org.apache.activemq.ActiveMQConnectionFactory">
+   <property name="brokerURL" value="${amqbroker.secondaryhost}:${amqbroker.secondaryport}" />
+   <property name="userName" value="${amqbroker.username}"/>
+   <property name="password" value="${amqbroker.password}"/>
+</bean>
+ 
+<bean id="pooledConnectionFactorySecondary"
+   class="org.apache.activemq.pool.PooledConnectionFactory" init-method="start" destroy-method="stop">
+  <property name="maxConnections" value="${amq.maxConnections}" /> 
+   <property name="connectionFactory" ref="jmsConnectionFactorySecondary" />
+</bean>
+
+<bean id="jmsConfigSecondary"
+   class="org.apache.camel.component.jms.JmsConfiguration">
+   <property name="connectionFactory" ref="pooledConnectionFactorySecondary"/>
+   <property name="concurrentConsumers" value="${amq.concurrentConsumers}"/>
+   <property name="mapJmsMessage" value="${amq.mapJmsMessage}" />
+   <property name="maxConcurrentConsumers" value="${amq.maxConcurrentConsumers}" />
+   <property name="asyncConsumer" value="${amq.asyncConsumer}" />
+   <property name="asyncStartListener" value="${amq.asyncStartListener}" />  
+</bean>
+ 
+ <bean id="activemqSecondary"
+    class="org.apache.activemq.camel.component.ActiveMQComponent">
+    <property name="configuration" ref="jmsConfigSecondary"/>
+    <property name="transacted" value="${amq.transacted}"/>
+    <property name="cacheLevelName" value="${amq.cacheLevelName}" />
+</bean>
+
+<bean id="ProfQuoteshutdownStrategy" class="org.apache.camel.impl.DefaultShutdownStrategy">
+        <property name="timeout" value="30"/>
+</bean>
+
+
+<camelContext threadNamePattern="PROFESSIONSQUOREQ" id="ProfQuoteCalculator" xmlns="http://camel.apache.org/schema/blueprint">
+   <threadPoolProfile poolSize="100" maxPoolSize="200" maxQueueSize="1000" customId="true" id="ProfQuoteReqPool"/>	
+   <onException>
+			  <exception>com.idep.profession.exception.ExecutionTerminator</exception>
+			<exception>java.lang.Exception</exception>
+			<handled>
+				<constant>true</constant>
+			</handled>
+			<log message="Professional Based Journey in Exception Occure" />
+			<process ref="ProfAppExceptionProcessor" customId="true"	id="ProfAppExceptionProcessor" />
+		</onException>
+   
+    <route id="professionQuoteRoute">
+    <from uri="cxfrs:bean:ProfessionQuoteEndpoint?continuationTimeout=90000"/>
+	  <choice id="ProfQuoteDecision">
+      	<when id="ProfQuoteCalcReq">
+	        	<simple>${header.operationName} == "calculateProfQuote"</simple>
+			    <bean ref="ProfessionQuoteServiceImpl" method="calculateProfQuote" id="UserBean"/>
+				<log message="ProfessionQuoteServiceImpl request :${body}" />
+				<process ref="ProfessionalQuoteDBStore" id="ProfessionalQuoteDBStore"/>
+				<process ref="GetAddressRiskProcessor" id="GetAddressRiskProcessor"/>
+					<process ref="PBReqConverterValidation" id="PBReqConverterValidation"/>
+					<log message="Mapper processing started for PBJ Req  :  ${body}"></log>
+	   				<to pattern="InOut" uri="xpathmapper://xpathmapdata" id="ALGRequestProcessorXPathMapper" />
+	   		       <log message="Risk Analysis Recommendation Process Initiated :${body}" />
+	   		     <to pattern="InOut" uri="webservconsumer://invoke" id="RISKANAWB"/>
+				  <!-- <process ref="ALGRequestProcessor" id="ALGRequestProcessor"/> -->
+				  <log message="Risk Analysis Recommendation  Process Completed :${body}" />
+				  <process ref="RiskQuoteDBStore" id="RiskQuoteDBStore"/>
+					<process ref="ProfessionRequestProcessor" id="ProfessionRequestProcessor"/>
+					<bean ref="ProfQuoteResponse" method="sendGenericResponse" id="ProfQuoteCalcResponse"/>
+				</when>
+				<when id="updateCarrierID">
+					<simple>${header.operationName} == "updateSelectedProduct"</simple>
+					<bean ref="ProfessionQuoteServiceImpl" method="updateSelectedProduct" id="UserBean"/>
+					<process ref="SelectedProductProcessor" id="SelectedProductProcessor"/>
+					<bean ref="ProfQuoteResponse" method="sendGenericResponse" id="ProfQuoteCalcResponse"/>
+				</when>
+		</choice>
+    </route>
+    
+    <route id="UpdateRiskRes">
+     		<from uri="activemq:queue:RiskUpdateRequestQ" id="RiskUpdateRequestQ">
+      		<description/>
+   		 </from>
+   		   <bean ref="PBQuoteListener" method="onMessage" id="PBQRISKQuoteReqBean"/>
+   		 	    <bean ref="ProfessionQuoteServiceImpl" method="calculateProfQuote" id="RISKUserBean"/>
+				<log message="ProfessionQuoteServiceImpl request :${body}" />
+		     		<process ref="GetAddressRiskProcessor" id="RiskGetAddressRiskProcessor"/>
+					<process ref="PBReqConverterValidation" id="RISKPBReqConverterValidation"/>
+					<log message="Mapper processing started for PBJ update Request  Req  :  ${body}"></log>
+	   				<to pattern="InOut" uri="xpathmapper://xpathmapdata" id="RISKALGRequestProcessorXPathMapper" />
+	   		         <log message="Updated request Risk Analysis Recommendation Process Initiated :${body}" />
+	   		     <to pattern="InOut" uri="webservconsumer://invoke" id="RISKANAWBIpdate"/>
+                  <!-- <process ref="ALGRequestProcessor" id="updateALGRequestProcessor"/> -->
+				  <log message="Updated request Risk Analysis Recommendation  Process Completed :${body}" />
+	   		      	 <bean ref="ProfessionQuoteServiceImpl" method="calculateProfQuote" id="RISKUserBean"/>
+				  <process ref="RiskQuoteDBStore" id="UpdateRiskQuoteDBStore"/>
+    </route>
+  </camelContext>
+
+</blueprint>

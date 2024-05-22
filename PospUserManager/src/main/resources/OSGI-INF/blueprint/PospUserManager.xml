@@ -1,0 +1,116 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<blueprint xmlns="http://www.osgi.org/xmlns/blueprint/v1.0.0"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:camel="http://camel.apache.org/schema/blueprint"
+	xmlns:cxf="http://camel.apache.org/schema/blueprint/cxf"
+	xsi:schemaLocation="
+             http://www.osgi.org/xmlns/blueprint/v1.0.0 http://www.osgi.org/xmlns/blueprint/v1.0.0/blueprint.xsd
+             http://camel.apache.org/schema/blueprint/cxf http://camel.apache.org/schema/blueprint/cxf/camel-cxf.xsd
+             http://camel.apache.org/schema/blueprint http://camel.apache.org/schema/blueprint/camel-blueprint.xsd">
+
+	<cxf:rsServer id="pospUserServiceEndpoint" address="/pospuserservice"
+		serviceClass="com.idep.pospservice.service.POSPUserManagerService"
+		loggingFeatureEnabled="true">
+		<cxf:providers>
+			<bean
+				class="org.apache.cxf.rs.security.cors.CrossOriginResourceSharingFilter" />
+		</cxf:providers>
+	</cxf:rsServer>
+
+	<bean id="POSPServiceImpl" class="com.idep.pospservice.impl.service.POSPServiceImpl" />
+	<bean id="AdminProfileReqProcessor" class="com.idep.pospservice.user.service.AdminProfileReqProcessor" />
+	<bean id="ApprovePospAdmin" class="com.idep.pospservice.user.service.ApprovePospAdmin" />
+	<bean id="AdminProfileResProcessor" class="com.idep.pospservice.user.service.AdminProfileResProcessor" />
+	<bean id="ScreenMenuConfigReqProcessor" class="com.idep.pospservice.user.service.ScreenMenuConfigReqProcessor" />
+	<bean id="RoleConfiguration" class="com.idep.pospservice.user.service.RoleConfiguration" />
+	<bean id="GroupConfiguration" class="com.idep.pospservice.user.service.GroupConfiguration" />
+	<bean id="GetConfigurationDocument" class="com.idep.pospservice.user.service.GetConfigurationDocument" />
+	<bean id="AddNewScreenConfig" class="com.idep.pospservice.user.service.AddNewScreenConfig" />
+	<bean id="AddNewMenuConfig" class="com.idep.pospservice.user.service.AddNewMenuConfig" />
+	<bean id="GetUserAppConfig" class="com.idep.pospservice.user.service.GetUserAppConfig" />
+	<bean id="LogoutUserProcessor" class="com.idep.pospservice.userLogout.LogoutUserProcessor" />
+	<bean id="ResetAdminPassword" class="com.idep.pospservice.user.service.ResetAdminPassword" />
+	
+	<camelContext trace="false" streamCache="true"
+		threadNamePattern="POSPUSERSERVICE" id="POSPUserServiceReqQContext"
+		xmlns="http://camel.apache.org/schema/blueprint">
+		<route id="POSPServiceRoute">
+			<from uri="cxfrs:bean:pospUserServiceEndpoint" id="pospUSerServiceEndpoint">
+				<description />
+			</from>
+			<log message="POSP Service Started" />
+			<log message="The message contains   :  ${body}" />
+			<log message="The header contains  :  ${header.operationName}" />
+			<choice id="POSPUserServiceDecision">
+				<when id="AdminProfileConfigurationReq">
+					<simple>${header.operationName} == "getAdminProfileConfig"</simple>
+					<bean ref="POSPServiceImpl" method="getAdminProfileConfig" id="getAdminProfileConfigReq" />
+					<process ref="AdminProfileReqProcessor" id="AdminProfileReqProcessor" />
+			<choice id="AdminRestPassCond">
+			<when id="AdminRESETPassNO">
+					<simple>${header.resetPassword} == "No"</simple>
+					<log message="POSP RqQ  Admin Registration  :{${body} " />
+					<to pattern="InOut" uri="xpathmapper://xpathmapdata" id="POSPXPathMapper" />
+					<log message="POSP RqQ  Admin Registration extracted request  :{${body} " />
+					<process ref="AdminProfileResProcessor" id="AdminProfileResProcessor" />
+					</when>
+				<when id="AdminRESETPassYes">
+					<simple>${header.resetPassword} == "Yes"</simple>
+					<bean ref="POSPServiceImpl" method="getAdminProfileConfig" id="ResetAdminPassBean" />
+					<process ref="ResetAdminPassword" id="ResetAdminPassword" />
+				</when>	
+					</choice>
+				</when>
+				<when id="ApproveAdminReq">
+					<simple>${header.operationName} == "approveAdmin"</simple>
+					<bean ref="POSPServiceImpl" method="approveAdmin" id="approveAdminReq" />
+					<process ref="ApprovePospAdmin" id="ApprovePospAdmin" />
+					<bean ref="POSPServiceImpl" method="sendMsg" id="ResAdminDetails" />
+				</when>
+				<when id="ScreenConfigReq">
+					<simple>${header.operationName} == "getScreenMenuConfig"</simple>
+					<bean ref="POSPServiceImpl" method="getScreenConfig" id="getScreenConfigReq" />
+					<process ref="ScreenMenuConfigReqProcessor" id="ScreenMenuConfigReqProcessor" />
+				</when>
+				<when id="RoleConfigReq">
+					<simple>${header.operationName} == "createRoleConfig"</simple>
+					<bean ref="POSPServiceImpl" method="createRoleConfig" id="getRoleConfigReq" />
+					<process ref="RoleConfiguration" id="RoleConfiguration" />
+				</when>
+				<when id="GroupConfigReq">
+					<simple>${header.operationName} == "createGroupConfig"</simple>
+					<bean ref="POSPServiceImpl" method="createGroupConfig" id="getGroupConfigReq" />
+					<process ref="GroupConfiguration" id="GroupConfiguration" />
+				</when>
+				<when id="GroupConfigReq">
+					<simple>${header.operationName} == "getConfigDoc"</simple>
+					<bean ref="POSPServiceImpl" method="getConfigDoc" id="getGroupConfigReq" />
+					<process ref="GetConfigurationDocument" id="GetConfigurationDocument" />
+				</when>
+				
+				<when id="ScreenConfigReq">
+					<simple>${header.operationName} == "addScreenConfig"</simple>
+					<bean ref="POSPServiceImpl" method="addScreenConfig" id="addScreenConfigReq" />
+					<process ref="AddNewScreenConfig" id="AddNewScreenConfig" />
+				</when>
+				<when id="ScreenConfigReq">
+					<simple>${header.operationName} == "addMenuConfig"</simple>
+					<bean ref="POSPServiceImpl" method="addMenuConfig" id="addMenuConfigReq" />
+					<process ref="AddNewMenuConfig" id="AddNewMenuConfig" />
+				</when>
+				<when id="getUserAppConfig">
+					<simple>${header.operationName} == "getUserAppConfig"</simple>
+					<bean ref="POSPServiceImpl" method="getUserAppConfig" id="getUserAppConfig" />
+					<process ref="GetUserAppConfig" id="GetUserAppConfig" />
+				</when>
+				<when id="getUserAppConfig">
+					<simple>${header.operationName} == "UserLogout"</simple>
+					<bean ref="POSPServiceImpl" method="UserLogout" id="getUserAppConfig" />
+					<process ref="LogoutUserProcessor" id="LogoutUserProcessor" />
+				</when>
+			</choice>
+			<marshal>
+				<json prettyPrint="true" library="Jackson" />
+			</marshal>
+		</route>
+	</camelContext>
+</blueprint>

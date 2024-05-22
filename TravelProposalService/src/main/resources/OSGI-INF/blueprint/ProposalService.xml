@@ -1,0 +1,161 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<blueprint xmlns="http://www.osgi.org/xmlns/blueprint/v1.0.0"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xmlns:cm="http://aries.apache.org/blueprint/xmlns/blueprint-cm/v1.1.0"
+       xmlns:cxf="http://camel.apache.org/schema/blueprint/cxf"
+       xsi:schemaLocation="http://www.osgi.org/xmlns/blueprint/v1.0.0 http://www.osgi.org/xmlns/blueprint/v1.0.0/blueprint.xsd
+        http://camel.apache.org/schema/blueprint/cxf http://camel.apache.org/schema/blueprint/cxf/camel-cxf.xsd
+       http://camel.apache.org/schema/blueprint http://camel.apache.org/schema/blueprint/camel-blueprint.xsd">
+
+<cxf:rsServer id="TravelProposalEndpoint" address="/travelpolicyproposal" serviceClass="com.idep.proposal.service.TravelProposalService" loggingFeatureEnabled="true">
+<cxf:providers>
+        <bean class="org.apache.cxf.rs.security.cors.CrossOriginResourceSharingFilter" />
+</cxf:providers>
+</cxf:rsServer>
+
+  <bean id="TravelProposalServiceImpl" class="com.idep.proposal.impl.service.TravelProposalServiceImpl"/>
+  <bean id="TravelProposalService" class="com.idep.proposal.service.TravelProposalService"/>
+  <bean id="MasterProposalReqProcessor" class="com.idep.proposal.req.processor.MasterProposalReqProcessor"/>
+  <bean id="MasterPolicyReqProcessor" class="com.idep.policy.req.processor.MasterPolicyReqProcessor"/>
+  <bean id="ProposalExceptionProcessor" class="com.idep.proposal.exception.processor.ProposalExceptionProcessor"/>
+  <bean id="ExecutionTerminator" class="com.idep.proposal.exception.processor.ExecutionTerminator"/>
+  <bean id="TravelProposalReqProcessor" class="com.idep.proposal.req.processor.TravelProposalReqProcessor"/>
+  <bean id="TravelProposalDBReqProcessor" class="com.idep.proposal.dbstore.processor.TravelProposalDBReqProcessor"/>
+  <bean id="ProposalReqDBStore" class="com.idep.proposal.dbstore.processor.ProposalReqDBStore"/>
+  <bean id="TravelProposalResProcessor" class="com.idep.proposal.res.processor.TravelProposalResProcessor"/>
+  <bean id="CarrierProposalServiceResLogger" class="com.idep.carrier.log.processor.CarrierProposalServiceResLogger"/>
+  <bean id="CarrierProposalRequestDBStore" class="com.idep.proposal.dbstore.processor.CarrierProposalRequestDBStore"/>
+  <bean id="HDFCTravelProposalResponseValidator" class="com.idep.proposal.carrier.res.processor.HDFCTravelProposalResponseValidator"/>  
+  <bean id="TravelSoapResFormatter" class="com.idep.policy.res.processor.TravelSoapResFormatter"/>
+  <bean id="TravelProposalAttributeReqProcessor" class="com.idep.proposal.req.processor.TravelProposalAttributeReqProcessor"/>
+  <bean id="TravelProposalResHandler" class="com.idep.proposal.res.processor.TravelProposalResHandler"/>
+  <bean id="TravelProposalReqDBStore" class="com.idep.proposal.data.commit.TravelProposalReqDBStore"/>
+   <bean id="ProposalResProcessor" class="com.idep.proposal.res.processor.ProposalResProcessor"/>
+   <bean id="TravelPolicySubmitServiceImpl" class="com.idep.proposal.impl.service.TravelPolicySubmitServiceImpl"/>
+   <bean id="PaymentResponseUpdateProcessor" class="com.idep.policy.payment.res.processor.PaymentResponseUpdateProcessor"/>
+   <bean id="PaymentResponseValidator" class="com.idep.policy.payment.res.processor.PaymentResponseValidator"/>
+   <bean id="TravelPolicyReqProcessor" class="com.idep.policy.req.processor.TravelPolicyReqProcessor"/>
+   <bean id="TravelPolicyReqHandler" class="com.idep.policy.req.processor.TravelPolicyReqHandler"/>
+   <bean id="TravelPolicyResHandler" class="com.idep.policy.res.processor.TravelPolicyResHandler"/>
+   <bean id="UserProfileReqProcessor" class="com.idep.user.profile.processor.UserProfileReqProcessor"/>
+   <bean id="TravelPolicyResProcessor" class="com.idep.policy.res.processor.TravelPolicyResProcessor" />
+   <bean id="TravelProposalReqLogProcessor" class="com.idep.proposal.log.processor.TravelProposalReqLogProcessor"/>
+   <bean id="TravelProposalServiceResLogProcessor" class="com.idep.proposal.log.processor.TravelProposalServiceResLogProcessor"/>
+   <bean id="TravelPolicyLogProcessor" class="com.idep.proposal.log.processor.TravelPolicyLogProcessor" />
+  <bean id="CarrierProposalResponseDBStore" class="com.idep.proposal.dbstore.processor.CarrierProposalResponseDBStore"/>
+  <bean id="TravelProposalServiceReqLogProcessor" class="com.idep.proposal.log.processor.TravelProposalServiceReqLogProcessor"/>
+  <bean id="TravelPolicyResLogProcessor" class="com.idep.proposal.log.processor.TravelPolicyResLogProcessor"/>
+  <bean id="TravelPolicyProcessor" class="com.idep.policy.carrier.req.processor.TravelPolicyProcessor"/>
+  <bean id="XMLCharEmitter" class="com.idep.proposal.req.processor.XMLCharEmitter"/>
+  <bean id="FutureGenraliSoapReqFormatter" class="com.idep.proposal.req.processor.FutureGenraliSoapReqFormatter"/>
+   <bean id="TravelProposalReqHandler" class="com.idep.proposal.req.processor.TravelProposalReqHandler"/>
+   <bean id="SoapReqFormatter" class="com.idep.proposal.req.processor.SoapReqFormatter"/>
+   
+    <bean id="FutureTravelSoapResFormatter" class="com.idep.policy.carrier.res.processor.FutureTravelSoapResFormatter"/>
+  <bean id="TravelCarrierPolicyResponseProcessor" class="com.idep.proposal.carrier.res.processor.TravelCarrierPolicyResponseProcessor"/>
+   <bean id="AddProposerNodeProcessor" class="com.idep.proposal.carrier.req.processor.AddProposerNodeProcessor"/>
+   <bean id="TravlProposalResExtractProcessor" class="com.idep.policy.res.processor.TravlProposalResExtractProcessor"/>
+  <bean id="TataAIGSoapReqGenerator" class="com.idep.proposal.carrier.req.processor.TataAIGSoapReqGenerator"/>
+    <bean id="TataAIGSoapResFormatter" class="com.idep.policy.carrier.res.processor.TataAIGSoapResFormatter"/>
+  <bean id="TataAIGTravelResponseProcessor" class="com.idep.proposal.carrier.res.processor.TataAIGTravelResponseProcessor"/>
+  <bean id="HDFCTravelPlanCodeProcessor" class="com.idep.proposal.carrier.req.processor.HDFCTravelPlanCodeProcessor"/>
+  <bean id="TravelProposalReqPostProcessor" class="com.idep.proposal.req.processor.TravelProposalReqPostProcessor"/>
+  <bean id="TataAIGTravelPolicyDocProcessor" class="com.idep.policy.carrier.req.processor.TataAIGTravelPolicyDocProcessor"/>
+  <bean id="TravelPolicyDocServiceImpl" class="com.idep.proposal.impl.service.TravelPolicyDocServiceImpl"/>
+  <bean id="TataAIGDocSoapReqGenerator" class="com.idep.proposal.carrier.req.processor.TataAIGDocSoapReqGenerator"/>
+  <bean id="UserProfilePolicyUpdateProcessor" class="com.idep.user.profile.processor.UserProfilePolicyUpdateProcessor"/>
+  <bean id="PolicyDocumentReqQListener" class="com.idep.policy.queue.listener.PolicyDocumentReqQListener"/>
+  <bean id="PolicyDocumentReqProcessor" class="com.idep.policy.req.processor.PolicyDocumentReqProcessor"/>
+  <bean id="ReligarePolicyDocSOAPRequestFormatter" class="com.idep.policy.carrier.req.processor.ReligarePolicyDocSOAPRequestFormatter"/>
+  <bean id="ReligarePolicyDocSOAPResponseFormatter" class="com.idep.policy.carrier.res.processor.ReligarePolicyDocSOAPResponseFormatter"/>
+  <bean id="PolicyDocumentResProcessor" class="com.idep.policy.carrier.req.processor.PolicyDocumentResProcessor"/>  
+  <bean id="TataAIGPolicyDocSOAPResponseFormatter" class="com.idep.policy.carrier.res.processor.TataAIGPolicyDocSOAPResponseFormatter"/>   
+  <bean id="ProposalAddressProcessor" class="com.idep.proposal.carrier.req.processor.ProposalAddressProcessor"/>
+  <bean id="BhartiAxaSoapResFormatter" class="com.idep.proposal.carrier.res.processor.BhartiAxaSoapResFormatter"/>   
+  <bean id="TravelProposalAgeCalculator" class="com.idep.proposal.impl.service.TravelProposalAgeCalculator"/>   
+  <bean id="ReligareTravelProposalResponseValidator" class="com.idep.proposal.carrier.res.processor.ReligareTravelProposalResponseValidator"/>
+  <bean id="FutureCarrierResponseProcessor" class="com.idep.proposal.carrier.res.processor.FutureCarrierResponseProcessor"/>    
+   
+<cm:property-placeholder persistent-id="AMQCustomProperties"> 
+ </cm:property-placeholder>
+ 
+ <bean id="jmsConnectionFactory"
+   class="org.apache.activemq.ActiveMQConnectionFactory">
+   <property name="brokerURL" value="${amqbroker.host}:${amqbroker.port}" />
+   <property name="userName" value="${amqbroker.username}"/>
+   <property name="password" value="${amqbroker.password}"/>
+</bean>
+
+<bean id="pooledConnectionFactory"
+   class="org.apache.activemq.pool.PooledConnectionFactory" init-method="start" destroy-method="stop">
+   <property name="maxConnections" value="${amq.maxConnections}" />
+   <property name="connectionFactory" ref="jmsConnectionFactory" />
+</bean>
+ 
+<bean id="jmsConfig"
+   class="org.apache.camel.component.jms.JmsConfiguration">
+   <property name="connectionFactory" ref="pooledConnectionFactory"/>
+   <property name="concurrentConsumers" value="${amq.concurrentConsumers}"/>
+   <property name="mapJmsMessage" value="${amq.mapJmsMessage}" />
+   <property name="maxConcurrentConsumers" value="${amq.maxConcurrentConsumers}" />
+   <property name="asyncConsumer" value="${amq.asyncConsumer}" />
+   <property name="asyncStartListener" value="${amq.asyncStartListener}" />
+</bean>
+ 
+<bean id="activemq"
+    class="org.apache.activemq.camel.component.ActiveMQComponent">
+    <property name="configuration" ref="jmsConfig"/>
+    <property name="transacted" value="${amq.transacted}"/>
+</bean>
+ 
+<!--  <bean id="http" class="org.apache.camel.component.http.HttpComponent">
+    <property name="camelContext" ref="TravelProposalContext"/>
+    <property name="httpConnectionManager" ref="proposalHttpConnectionManager"/>
+</bean>
+
+<bean id="https" class="org.apache.camel.component.http.HttpComponent">
+    <property name="camelContext" ref="TravelProposalContext"/>
+    <property name="httpConnectionManager" ref="proposalHttpConnectionManager"/>
+</bean> -->
+ 
+<bean id="proposalHttpConnectionManager" class="org.apache.commons.httpclient.MultiThreadedHttpConnectionManager">
+    <property name="params" ref="proposalHttpConnectionManagerParams"/>
+</bean>
+ 
+<bean id="proposalHttpConnectionManagerParams" class="org.apache.commons.httpclient.params.HttpConnectionManagerParams">
+    <property name="defaultMaxConnectionsPerHost" value="5"/>
+    <property name="maxTotalConnections" value="100" />
+    <property name="connectionTimeout" value="10000" />
+    <property name="soTimeout" value="60000"/>     	
+</bean>
+ 
+ 
+ 
+<camelContext streamCache="true" id="TravelProposalContext" xmlns="http://camel.apache.org/schema/blueprint">
+    <route id="TravelProposalRoute">
+      <from uri="cxfrs:bean:TravelProposalEndpoint?continuationTimeout=90000"/>
+      <log message="Log message after TravelProposalEndpoint" />
+       <choice id="PolicyProposalDecision">
+       
+      <when id="TravelProposalReq">
+        <simple>${header.operationName} == "submitTravelProposal"</simple>
+        <log message =" All headers : ${headers}"/>
+        <process ref="MasterProposalReqProcessor" id="MasterProposalReqProcessor"/>
+        <recipientList>
+          <simple>${header.proposalService}</simple>
+        </recipientList>
+        <bean ref="TravelProposalServiceImpl" method="sendMessage" id="ProposalResponse"/>
+      </when>
+      <when id="TravelPolicyCreator">
+        <simple>${header.operationName} == "createPolicy"</simple>
+        <process ref="MasterPolicyReqProcessor" id="MasterPolicyReqProcessor"/>
+        <recipientList>
+          <simple>${header.proposalService}</simple>
+        </recipientList>
+        <bean ref="TravelProposalServiceImpl" method="sendMessage" id="PolicyResponse"/>
+      </when>
+    </choice>
+    </route>
+  </camelContext>
+
+</blueprint>

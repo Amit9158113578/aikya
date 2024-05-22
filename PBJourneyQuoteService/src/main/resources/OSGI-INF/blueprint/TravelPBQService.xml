@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<blueprint xmlns="http://www.osgi.org/xmlns/blueprint/v1.0.0"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xmlns:cxf="http://camel.apache.org/schema/blueprint/cxf"
+       xmlns:cm="http://aries.apache.org/blueprint/xmlns/blueprint-cm/v1.1.0"
+       xsi:schemaLocation="
+       http://www.osgi.org/xmlns/blueprint/v1.0.0 http://www.osgi.org/xmlns/blueprint/v1.0.0/blueprint.xsd
+        http://camel.apache.org/schema/blueprint/cxf http://camel.apache.org/schema/blueprint/cxf/camel-cxf.xsd
+       http://camel.apache.org/schema/blueprint http://camel.apache.org/schema/blueprint/camel-blueprint.xsd">
+
+  <camelContext threadNamePattern="PBTravelThread:#counter#" id="PBTravelQuoteCalculator" xmlns="http://camel.apache.org/schema/blueprint">
+  <threadPoolProfile poolSize="50" maxPoolSize="100" maxQueueSize="1000" customId="true" id="PBTrQreqPool"/>
+  <route id="PBQTravelCalculatorRoute">
+
+     <from uri="activemq:queue:PBQTravelRequestQ" id="TraavelQuoteCommonReqQ">
+      <description/>
+    </from>
+   <bean ref="PBQuoteListener" method="onMessage" id="PBTravelQuoteReqBean"/>
+    <process ref="TravelQuoteRequestProcessor" id="RequestProcessorTravel"/>
+    <log message="PBQ request sending to mapper for generate Travel Quote Request : ${body}" id="PBQTraelReq"/>
+     <to pattern="InOut" uri="xpathmapper://xpathmapdata" id="ABHIHealthReqMapper"/>
+    <log message="PBQ request Genrated by mapper  for Travel  Quote Request  Service : ${body}" id="PBQTravelRes"/>
+	<to pattern="InOut" uri="webservconsumer://invoke" id="WBCPBQREQ"/>
+    <log message="PBQ  TRAVEL Quote Request  Service Respose : ${body}" id="PBQTravelServRes"/>
+      <process ref="PBQuoteResponseProcessor" id="PBTravQuoteResponseProcessor"/>
+       <multicast id="PBCarQuoteResponseMSG" parallelProcessing="true">
+       <pipeline>
+      		 	  <log message="PBQ Travel quote carrier service response ${body}"/>
+	      		 <to pattern="InOnly" uri="activemq:queue:PBQTravelResponseQ?timeToLive=120000&amp;includeSentJMSMessageID=true"/>
+     	</pipeline>
+	      <pipeline>
+	      	     <process ref="PBQuoteDBSender" id="PBQuoteDBSender"/>     
+	      </pipeline>
+    </multicast>
+    </route>
+    </camelContext>
+</blueprint>

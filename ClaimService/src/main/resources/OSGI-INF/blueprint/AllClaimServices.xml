@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<blueprint xmlns="http://www.osgi.org/xmlns/blueprint/v1.0.0"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xmlns:camel="http://camel.apache.org/schema/blueprint"
+       xmlns:cxf="http://camel.apache.org/schema/blueprint/cxf"
+       xsi:schemaLocation=" 
+       http://www.osgi.org/xmlns/blueprint/v1.0.0 http://www.osgi.org/xmlns/blueprint/v1.0.0/blueprint.xsd
+       http://camel.apache.org/schema/blueprint/cxf http://camel.apache.org/schema/blueprint/cxf/camel-cxf.xsd
+       http://camel.apache.org/schema/blueprint http://camel.apache.org/schema/blueprint/camel-blueprint.xsd">
+
+<cxf:rsServer id="claimEndPoint" address="/claimDetails" serviceClass="com.idep.claim.service.IclaimDetailsService" loggingFeatureEnabled="true" >
+<cxf:providers>
+        <bean class="org.apache.cxf.rs.security.cors.CrossOriginResourceSharingFilter" />
+ </cxf:providers>
+ </cxf:rsServer>
+
+ <bean id="ClaimDetailsService" class="com.idep.claim.service.ClaimDetailsService"/>
+ <bean id="ClaimDetailsProcessor" class="com.idep.claim.processor.ClaimDetailsProcessor"/>
+ 
+  <camelContext xmlns="http://camel.apache.org/schema/blueprint">
+    <route id="ClaimServiceRoute">
+     <from uri="cxfrs:bean:claimEndPoint" id="claimEndPoint"/>
+     <log message="claim Details Creation initiated: ${body}"/>
+     <bean ref="ClaimDetailsService" method="getClaimDetails" id="getClaimDetailsReq"/>
+       <process ref="ClaimDetailsProcessor" id="ClaimDetailsProcessor"/>
+      <log message="Claim Details Processor Details ${body}"/>
+    	 <marshal>
+       	 <json prettyPrint="true" library="Jackson"/>
+      	</marshal>
+    </route>
+  </camelContext>
+
+</blueprint>

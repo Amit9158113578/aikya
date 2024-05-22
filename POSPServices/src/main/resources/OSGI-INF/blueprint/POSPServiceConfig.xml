@@ -1,0 +1,230 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<blueprint xmlns="http://www.osgi.org/xmlns/blueprint/v1.0.0"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:camel="http://camel.apache.org/schema/blueprint"
+	xmlns:cm="http://aries.apache.org/blueprint/xmlns/blueprint-cm/v1.1.0"
+	xmlns:cxf="http://camel.apache.org/schema/blueprint/cxf"
+
+	xsi:schemaLocation=" 
+       http://www.osgi.org/xmlns/blueprint/v1.0.0 http://www.osgi.org/xmlns/blueprint/v1.0.0/blueprint.xsd
+       http://camel.apache.org/schema/blueprint/cxf http://camel.apache.org/schema/blueprint/cxf/camel-cxf.xsd
+       http://camel.apache.org/schema/blueprint http://camel.apache.org/schema/blueprint/camel-blueprint.xsd">
+
+	<cxf:rsServer id="pospServiceEndpoint" address="/pospservice"
+		serviceClass="com.idep.pospservice.service.POSPService"
+		loggingFeatureEnabled="true">
+		<cxf:providers>
+			<bean
+				class="org.apache.cxf.rs.security.cors.CrossOriginResourceSharingFilter" />
+		</cxf:providers>
+	</cxf:rsServer>
+
+	<cm:property-placeholder persistent-id="AMQCustomProperties">
+	</cm:property-placeholder>
+
+	<bean id="jmsConnectionFactory" class="org.apache.activemq.ActiveMQConnectionFactory">
+		<property name="brokerURL" value="${amqbroker.host}:${amqbroker.port}" />
+		<property name="userName" value="${amqbroker.username}" />
+		<property name="password" value="${amqbroker.password}" />
+	</bean>
+
+	<bean id="pooledConnectionFactory" class="org.apache.activemq.pool.PooledConnectionFactory"
+		init-method="start" destroy-method="stop">
+		<property name="maxConnections" value="${amq.maxConnections}" />
+		<property name="connectionFactory" ref="jmsConnectionFactory" />
+	</bean>
+
+	<bean id="jmsConfig" class="org.apache.camel.component.jms.JmsConfiguration">
+		<property name="connectionFactory" ref="pooledConnectionFactory" />
+		<property name="concurrentConsumers" value="${amq.concurrentConsumers}" />
+		<property name="mapJmsMessage" value="${amq.mapJmsMessage}" />
+		<property name="maxConcurrentConsumers" value="${amq.maxConcurrentConsumers}" />
+		<property name="asyncConsumer" value="${amq.asyncConsumer}" />
+		<property name="asyncStartListener" value="${amq.asyncStartListener}" />
+	</bean>
+
+	<bean id="activemq" class="org.apache.activemq.camel.component.ActiveMQComponent">
+		<property name="configuration" ref="jmsConfig" />
+		<!-- if we are using transacted then enable CACHE_CONSUMER (if not using 
+			XA) to run faster see more details at: http://camel.apache.org/jms <property 
+			name="transacted" value="${amq.transacted}"/> <property name="cacheLevelName" 
+			value="${amq.cacheLevelName}" /> -->
+	</bean>
+	<bean id="POSPServiceImpl" class="com.idep.pospservice.impl.service.POSPServiceImpl" />
+	<bean id="OTPValidator" class="com.idep.pospservice.authentication.OTPValidator" />
+	<bean id="DataAccessorProcessor" class="com.idep.pospservice.request.DataAccessorProcessor" />
+	<bean id="UploadFileProcessor" class="com.idep.pospservice.request.UploadFileProcessor" />
+	<bean id="AgentProfileResProcessor" class="com.idep.pospservice.response.AgentProfileResProcessor" />
+	<bean id="UserAuthentication" class="com.idep.pospservice.authentication.UserAuthentication" />
+	<bean id="ApprovePospAgent" class="com.idep.pospservice.request.ApprovePospAgent" />
+	<bean id="FetchLeadReqProcessor" class="com.idep.pospservice.leads.FetchLeadReqProcessor" />
+	<bean id="FetchCustLeadReqProcessor" class="com.idep.pospservice.leads.FetchCustLeadReqProcessor" />
+	<bean id="FetchCustProposalReqProcessor"
+		class="com.idep.pospservice.leads.FetchCustProposalReqProcessor" />
+	<bean id="UpdateAgentDoc" class="com.idep.pospservice.request.UpdateAgentDoc" />
+	<!-- <bean id="AgentProfileReqProcessor" class="com.idep.pospservice.request.AgentProfileReqProcessor" 
+		/> -->
+	<bean id="ResposneMessage" class="com.idep.pospservice.util.ResposneMessage" />
+	<bean id="UploadDocumentResponse" class="com.idep.pospservice.response.UploadDocumentResponse" />
+	<bean id="GetAdminDetails" class="com.idep.pospservice.request.GetAdminDetails" />
+	<bean id="GeneratePospDocDownloadUrl"
+		class="com.idep.pospservice.response.GeneratePospDocDownloadUrl" />
+	<bean id="AdminLogin" class="com.idep.pospservice.request.AdminLogin" />
+	<bean id="UserAuthenticationResponse"
+		class="com.idep.pospservice.authentication.UserAuthenticationResponse" />
+	<bean id="SMSEmailRequestGenerater"
+		class="com.idep.pospservice.authentication.SMSEmailRequestGenerater" />
+	<bean id="GetDashBoardInfo" class="com.idep.pospservice.request.GetDashBoardInfo" />
+	<bean id="GetMoodleSessoin" class="com.idep.pospservice.authentication.GetMoodleSessoin" />
+	<bean id="UpdateUserDashoard" class="com.idep.pospservice.request.UpdateUserDashoard" />
+	<bean id="POSPReqQListener" class="com.idep.pospservice.service.POSPReqQListener" />
+	
+	<bean id="TicketResProcessor" class="com.idep.pospservice.response.TicketResProcessor" />
+	<bean id="TicketMessageProcessor" class="com.idep.pospservice.request.TicketMessageProcessor" />
+	<bean id="GetTicketsReqProcessor" class="com.idep.pospservice.request.GetTicketsReqProcessor" />
+	<bean id="TicketDBStore" class="com.idep.popsp.ticket.dbstore.TicketDBStore" />
+	<bean id="UpdatePospTicket" class="com.idep.popsp.ticket.dbstore.UpdatePospTicket" />
+	<bean id="GetUserTokenProcessor" class="com.idep.pospservice.authentication.GetUserTokenProcessor" />
+
+	<camelContext trace="false" streamCache="true"
+		threadNamePattern="POSPSERVICE" id="POSPServiceReqQContext"
+		xmlns="http://camel.apache.org/schema/blueprint">
+		<route id="POSPServiceRoute">
+			<from uri="cxfrs:bean:pospServiceEndpoint" id="pospServiceEndpoint">
+				<description />
+			</from>
+			<log message="POSP Service Started" />
+			<log message="The message contains   :  ${body}" />
+			<log message="The header contains  :  ${header.operationName}" />
+			<choice id="POSPServiceDecision">
+				<when id="UserAuthenticationReq">
+					<simple>${header.operationName} == "getUserAuthDetails"</simple>
+					<bean ref="POSPServiceImpl" method="getUserAuthDetails" id="getUserAuthDetailsReq" />
+					<process ref="UserAuthentication" id="UserAuthentication" />
+					<multicast id="SMSEMAILMulticast" parallelProcessing="true">
+						<pipeline>
+							<choice id="otpValidation">
+								<when id="otpValidationYes">
+									<simple>${header.otpValidation} == "YES"</simple>
+									<process ref="SMSEmailRequestGenerater" id="SMSEmailRequestGenerater" />
+									<log
+										message="The sendig sms and emil on agent mobile and email : ${header.otpValidation}  " />
+									<to pattern="InOnly" uri="activemq:queue:SmsEmailOTPQ" id="QInternalEmail" />
+								</when>
+							</choice>
+						</pipeline>
+						<pipeline>
+							<process ref="UserAuthenticationResponse" id="UserAuthenticationResponse" />
+						</pipeline>
+					</multicast>
+				</when>
+				<when id="admiLogin">
+					<simple>${header.operationName} == "admiLogin"</simple>
+					<bean ref="POSPServiceImpl" method="getUserAuthDetails" id="getUserAuthDetailsReq" />
+					<process ref="AdminLogin" id="AdminLogin" />
+				</when>
+				<when id="OTPValidationReq">
+					<simple>${header.operationName} == "validateOTP"</simple>
+					<bean ref="POSPServiceImpl" method="validateOTP" id="validateOTPReq" />
+					<process ref="OTPValidator" id="OTPValidator" />
+				</when>
+				<when id="FetchDataReq">
+					<simple>${header.operationName} == "getData"</simple>
+					<bean ref="POSPServiceImpl" method="getData" id="getDataReq" />
+					<process ref="DataAccessorProcessor" id="DataAccessorProcessor" />
+				</when>
+				<when id="FetchLeadReq">
+					<simple>${header.operationName} == "fetchLeads"</simple>
+					<bean ref="POSPServiceImpl" method="fetchLeads" id="fetchLeadsReq" />
+					<process ref="FetchLeadReqProcessor" id="FetchLeadReqProcessor" />
+				</when>
+
+				<when id="FetchLeadReq">
+					<simple>${header.operationName} == "fetchProposals"</simple>
+					<bean ref="POSPServiceImpl" method="fetchProposals" id="fetchProposalsReq" />
+					<process ref="FetchCustProposalReqProcessor" id="FetchCustProposalReqProcessor" />
+				</when>
+
+				<when id="FetchCustLeadReq">
+					<simple>${header.operationName} == "fetchCustLeads"</simple>
+					<bean ref="POSPServiceImpl" method="fetchCustLeads" id="fetchCustLeadsReq" />
+					<process ref="FetchCustLeadReqProcessor" id="FetchCustLeadReqProcessor" />
+				</when>
+				<when id="ApproveAgentReq">
+					<simple>${header.operationName} == "approveAgent"</simple>
+					<process ref="ApprovePospAgent" id="ApprovePospAgent" />
+					<process ref="ResposneMessage" id="ResposneMessage" />
+					<bean ref="POSPServiceImpl" method="sendMsg" id="sendMesgReq" />
+				</when>
+				<when id="getAdminList">
+					<simple>${header.operationName} == "getAdminList"</simple>
+					<bean ref="POSPServiceImpl" method="getData" id="getDataReq" />
+					<process ref="GetAdminDetails" id="GetAdminDetails" />
+					<bean ref="POSPServiceImpl" method="sendMsg" id="ResAdminDetails" />
+				</when>
+				<when id="UpdateAgentReq">
+					<simple>${header.operationName} == "updateAgentDoc"</simple>
+					<bean ref="POSPServiceImpl" method="updateAgentDoc" id="updateAgentDocReq" />
+					<process ref="UpdateAgentDoc" id="UpdateAgentDoc" />
+				</when>
+				<when id="UploadDocReq">
+					<simple>${header.operationName} == "uploadPospDocument"</simple>
+					<process ref="UploadFileProcessor" id="UploadFileProcessor" />
+					<process ref="UploadDocumentResponse" id="UploadDocumentResponseProcess" />
+					<process ref="ResposneMessage" id="ResposneMessage" />
+				</when>
+				<when id="GenerateDownloadUrl">
+					<simple>${header.operationName} == "GenerateDocDownloadUrl"</simple>
+					<process ref="GeneratePospDocDownloadUrl" id="GeneratePospDocDownloadUrl" />
+					<process ref="ResposneMessage" id="ResposneMessage" />
+					<bean ref="POSPServiceImpl" method="sendMsg" id="downloadUrl" />
+				</when>
+				<when id="AgentProfileConfigurationReq">
+					<simple>${header.operationName} == "getAgentProfileConfig"</simple>
+					<bean ref="POSPServiceImpl" method="getAgentProfileConfig" id="getAgentProfileConfigReq" />
+					<process ref="AgentProfileResProcessor" id="AgentProfileResProcessor" />
+				</when>
+				<when id="TicketCreateConfigurationReq">
+					<simple>${header.operationName} == "createPOSPTicket"</simple>
+					<bean ref="POSPServiceImpl" method="collectTicketData" id="getcollectTicketData" />
+					<log message="posp create ticket request recieved : ${body}" />
+					<process ref="TicketMessageProcessor" id="TicketMessageProcessor" />
+					<log message="after TicketMessageProcessor : ${body}" />
+					<process ref="TicketDBStore" id="POSPTicketDB" />
+					<bean ref="TicketResProcessor" id="CreateTicketResponse" />
+				</when>
+				<when id="TicketCreateConfigurationReq">
+					<simple>${header.operationName} == "updatePospTicket"</simple>
+					<bean ref="POSPServiceImpl" method="UpdatePospTicket" id="updatePospTick" />
+					<log message="posp update ticket request recieved : ${body}" />
+					<process ref="UpdatePospTicket" id="UpdatePospTicket" />
+					<bean ref="TicketResProcessor" id="UpdateTicketResponse" />
+				</when>
+				<when id="getPOSPTicketChoice">
+					<simple>${header.operationName} == "getPOSPTickets"</simple>
+					<bean ref="POSPServiceImpl" method="collectTicketData" id="getPOSPTicketData" />
+					<log message="posp get tickets request recieved : ${body}" />
+					<process ref="GetTicketsReqProcessor" id="GetTicketsReq" />
+					<bean ref="TicketResProcessor" id="getTicketMethod" />
+				</when>
+				<when id="getUserDashBoard">
+					<simple>${header.operationName} == "getDashBoardInfo"</simple>
+					<bean ref="POSPServiceImpl" method="getDashBoardInfo" id="getDashBoardInfo" />
+					<process ref="GetDashBoardInfo" id="GetDashBoardInfo" />
+				</when>
+				<when id="getUserDashBoard">
+					<simple>${header.operationName} == "getMoodleSession"</simple>
+					<bean ref="POSPServiceImpl" method="getMoodleSession" id="getMoodleSessionFunctio" />
+					<process ref="GetMoodleSessoin" id="GetMoodleSessoin" />
+				</when>
+				<when id="getUserToken">
+					<simple>${header.operationName} == "getUserToken"</simple>
+					<bean ref="POSPServiceImpl" method="getUserToken" id="getUserTokenSessionFunctio" />
+					<process ref="GetUserTokenProcessor" id="GetUserTokenProcessor" />
+				</when>
+			</choice>
+			<marshal>
+				<json prettyPrint="true" library="Jackson" />
+			</marshal>
+			</route>
+	</camelContext>
+</blueprint>

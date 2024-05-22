@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<blueprint xmlns="http://www.osgi.org/xmlns/blueprint/v1.0.0"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xmlns:cm="http://aries.apache.org/blueprint/xmlns/blueprint-cm/v1.1.0"
+       xmlns:cxf="http://camel.apache.org/schema/blueprint/cxf"
+       xsi:schemaLocation="
+       http://www.osgi.org/xmlns/blueprint/v1.0.0 http://www.osgi.org/xmlns/blueprint/v1.0.0/blueprint.xsd
+        http://camel.apache.org/schema/blueprint/cxf http://camel.apache.org/schema/blueprint/cxf/camel-cxf.xsd
+       http://camel.apache.org/schema/blueprint http://camel.apache.org/schema/blueprint/camel-blueprint.xsd">
+ 
+<cxf:rsServer id="BikeQuoteEndpoint" address="/bikequoteservice" serviceClass="com.idep.bikequote.service.BikeQuoteCalcService" loggingFeatureEnabled="true">
+<cxf:providers>
+        <bean class="org.apache.cxf.rs.security.cors.CrossOriginResourceSharingFilter" />
+</cxf:providers>
+</cxf:rsServer>
+
+<bean id="BikeQuoteCalcServiceImpl" class="com.idep.bikequote.impl.service.BikeQuoteCalcServiceImpl"/>
+<bean id="BikeQuoteReqProcessor" class="com.idep.bikequote.req.processor.BikeQuoteReqProcessor" />
+<bean id="BikeQuoteIDVReqProcessor" class="com.idep.bikequote.req.processor.BikeQuoteIDVReqProcessor" />
+<bean id="BikeRequestQProcessor" class="com.idep.bikequote.req.processor.BikeRequestQProcessor" />
+<bean id="BikeQuoteResponse" class="com.idep.bikequote.response.BikeQuoteResponse"/>
+<bean id="BikeExtServiceReqProcessor" class="com.idep.bikequote.ext.form.req.BikeExtServiceReqProcessor"/>
+<bean id="BikeMQMsgProcessor" class="com.idep.bikequote.impl.service.BikeMQMsgProcessor"/>
+<bean id="BikeQuoteRequestListener" class="com.idep.listener.core.BikeQuoteRequestListener"/>
+<bean id="ExceptionMQMSGProcessor" class="com.idep.bikequote.exception.processor.ExceptionMQMSGProcessor"/>
+<bean id="ExecutionTerminator" class="com.idep.bikequote.exception.processor.ExecutionTerminator"/>
+<bean id="BikeQuoteLoggerProcessor" class="com.idep.bikequote.carrier.log.processor.BikeQuoteLoggerProcessor"/>
+<bean id="PremiumRatioCalculateProcessor" class="com.idep.bikequote.response.PremiumRatioCalculateProcessor" />
+<bean id="ResponseQueueProcessor" class="com.idep.bikequote.response.ResponseQueueProcessor"/>
+<bean id="ValidateServiceRequest" class="com.idep.bikequote.req.processor.ValidateServiceRequest"/>
+<bean id="TransformIDVRequest" class="com.idep.bikequote.req.processor.TransformIDVRequest"/>
+<bean id="TransformQuoteRequest" class="com.idep.bikequote.req.processor.TransformQuoteRequest"/>
+<bean id="ValidateIDVServiceResponse" class="com.idep.bikequote.response.ValidateIDVServiceResponse"/>
+<bean id="ValidateQuoteServiceResponse" class="com.idep.bikequote.response.ValidateQuoteServiceResponse"/>
+<bean id="UpdateStageProcessor" class="com.idep.bikequote.req.processor.UpdateStageProcessor"/>
+
+
+
+
+<cm:property-placeholder persistent-id="AMQCustomProperties"> 
+ </cm:property-placeholder> 
+
+<bean id="jmsConnectionFactory"
+   class="org.apache.activemq.ActiveMQConnectionFactory">
+   <property name="brokerURL" value="${amqbroker.bikeHost}:${amqbroker.bikePort}" />
+   <property name="userName" value="${amqbroker.bikeUsername}"/>
+   <property name="password" value="${amqbroker.bikePassword}"/>
+</bean>
+ 
+<bean id="pooledConnectionFactory"
+   class="org.apache.activemq.pool.PooledConnectionFactory" init-method="start" destroy-method="stop">
+   <property name="maxConnections" value="${amq.maxConnections}" />
+   <property name="connectionFactory" ref="jmsConnectionFactory" />
+</bean>
+ 
+<bean id="jmsConfig"
+   class="org.apache.camel.component.jms.JmsConfiguration">
+   <property name="connectionFactory" ref="pooledConnectionFactory"/>
+   <property name="concurrentConsumers" value="${amq.concurrentConsumers}"/>
+   <property name="mapJmsMessage" value="${amq.mapJmsMessage}" />
+   <property name="maxConcurrentConsumers" value="${amq.maxConcurrentConsumers}" />
+   <property name="asyncConsumer" value="${amq.asyncConsumer}" />
+   <property name="asyncStartListener" value="${amq.asyncStartListener}" />  
+</bean>
+ 
+ <bean id="activemq"
+    class="org.apache.activemq.camel.component.ActiveMQComponent">
+    <property name="configuration" ref="jmsConfig"/>
+    <property name="transacted" value="${amq.transacted}"/>
+    <property name="cacheLevelName" value="${amq.cacheLevelName}" />
+</bean>
+ <bean id="jmsConnectionFactorySecondary"
+   class="org.apache.activemq.ActiveMQConnectionFactory">
+   <property name="brokerURL" value="${amqbroker.secondaryhost}:${amqbroker.secondaryport}" />
+   <property name="userName" value="${amqbroker.username}"/>
+   <property name="password" value="${amqbroker.password}"/>
+</bean>
+ 
+<bean id="pooledConnectionFactorySecondary"
+   class="org.apache.activemq.pool.PooledConnectionFactory" init-method="start" destroy-method="stop">
+  <property name="maxConnections" value="${amq.maxConnections}" /> 
+   <property name="connectionFactory" ref="jmsConnectionFactorySecondary" />
+</bean>
+<bean id="jmsConfigSecondary"
+   class="org.apache.camel.component.jms.JmsConfiguration">
+    <property name="connectionFactory" ref="pooledConnectionFactorySecondary"/>
+   <property name="concurrentConsumers" value="${amq.concurrentConsumers}"/>
+   <property name="mapJmsMessage" value="${amq.mapJmsMessage}" />
+   <property name="maxConcurrentConsumers" value="${amq.maxConcurrentConsumers}" />
+   <property name="asyncConsumer" value="${amq.asyncConsumer}" />
+   <property name="asyncStartListener" value="${amq.asyncStartListener}" />  
+</bean>
+ 
+ <bean id="activemqSecondary"
+    class="org.apache.activemq.camel.component.ActiveMQComponent">
+    <property name="configuration" ref="jmsConfigSecondary"/>
+    <property name="transacted" value="${amq.transacted}"/>
+    <property name="cacheLevelName" value="${amq.cacheLevelName}" />
+</bean>
+
+<camelContext threadNamePattern="BIKEQUOREQ" id="BikeQuoteCalculator" xmlns="http://camel.apache.org/schema/blueprint">
+ <threadPool poolSize="10" maxPoolSize="50" maxQueueSize="50" id="bikeThreadPool" threadName="BikeThread" keepAliveTime="25"/>
+  <route id="BikeQuoteCalculatorRoute">
+    <from uri="cxfrs:bean:BikeQuoteEndpoint"/>
+     <bean ref="BikeQuoteCalcServiceImpl" method="calculateQuote" id="BikeQuoteReqBean"/>
+	 <process ref="BikeQuoteReqProcessor" id="BikeQuoteReqProcessor"/>
+	 <log message="after BikeQuoteReqProcessor :${body}"></log>
+     <bean ref="BikeQuoteResponse" method="sendGenericResponse" id="BikeQuoteResponse"/>
+  </route>
+</camelContext>
+
+</blueprint>

@@ -1,0 +1,195 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<blueprint xmlns="http://www.osgi.org/xmlns/blueprint/v1.0.0"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:cxf="http://camel.apache.org/schema/blueprint/cxf"
+	xsi:schemaLocation="
+       http://www.osgi.org/xmlns/blueprint/v1.0.0 http://www.osgi.org/xmlns/blueprint/v1.0.0/blueprint.xsd
+        http://camel.apache.org/schema/blueprint/cxf http://camel.apache.org/schema/blueprint/cxf/camel-cxf.xsd
+       http://camel.apache.org/schema/blueprint http://camel.apache.org/schema/blueprint/camel-blueprint.xsd">
+
+	<cxf:rsServer id="ReligareTravelProposalEndpoint" address="/religaretravelpolicyproposal" serviceClass="com.idep.proposal.service.TravelProposalService" loggingFeatureEnabled="true">
+		<cxf:providers>
+			<bean class="org.apache.cxf.rs.security.cors.CrossOriginResourceSharingFilter" />
+		</cxf:providers>
+	</cxf:rsServer>
+	
+  <camelContext streamCache="true" id="ReligareTravelProposalContext" xmlns="http://camel.apache.org/schema/blueprint">
+   <dataFormats>
+			<xmljson forceTopLevelObject="true" rootName="Session"
+				skipWhitespace="true" trimSpaces="true" skipNamespaces="true"
+				removeNamespacePrefixes="true" id="Religarejsonxml" />
+			<xmljson forceTopLevelObject="true" skipWhitespace="true"
+				trimSpaces="true" skipNamespaces="true" removeNamespacePrefixes="true"
+				id="Religarehproposaljsonxml" />
+		
+		</dataFormats>
+    <onException>
+			<exception>java.net.SocketTimeoutException</exception>
+			<exception>java.net.SocketException</exception>
+			<handled>
+				<constant>true</constant>
+			</handled>
+			<log message="Religare travel proposal service seems to be down" />
+			<process ref="ProposalExceptionProcessor" customId="true" id="ReligareTraProposalExceptionProcessor" />
+		</onException>
+		<onException>
+			<exception>org.apache.camel.component.http4.HttpOperationFailedException</exception>
+			<handled>
+				<constant>true</constant>
+			</handled>
+			<log
+				message="Religare travel proposal Http Operation Failed : check input provided" />
+			<process ref="ProposalExceptionProcessor" customId="true" id="ReligareHTTPProposalExceptionProcessor" />
+		</onException>
+		<onException>
+			<exception>com.idep.proposal.exception.processor.ExecutionTerminator</exception>
+			<exception>java.lang.Exception</exception>
+			<handled>
+				<constant>true</constant>
+			</handled>
+			<log message="Religare travel proposal process terminated" />
+			<process ref="ProposalExceptionProcessor" customId="true" id="ReligareTraGenericException" />
+			<marshal>
+				<json prettyPrint="true" library="Jackson" />
+			</marshal>
+		</onException>
+   			<route id="ReligareTravelProposalRoute">
+			<from uri="cxfrs:bean:ReligareTravelProposalEndpoint" />
+			<choice id="ReligareTravelDecisionMaker">
+				<when id="ReligareProposalReq">
+					<simple>${header.operationName} == "submitTravelProposal"</simple>
+					<bean ref="TravelProposalServiceImpl" method="submitTravelProposal" id="ReligareTraProposalSubmitReq" /> 
+					<process ref="TravelProposalReqProcessor" id="ReligareTravelProposalReqProcessor" />
+					<process ref="TravelProposalReqPostProcessor" id="TataAIGTravelProposalReqPostProcessor" />
+					<process ref="ProposalAddressProcessor" id="TataAIGProposalAddressProcessor" />
+					<!-- <when id="policyStatusSuccessPOSTSuccBASETrue">
+						<simple>${header.baseEnvStatus} == "true"</simple>
+						<log message="Base env status true" />
+						<to uri="direct:proposalCreateRequest" />
+					</when> -->
+					<!-- <when id="policyStatusSuccessPOSTSuccBASEFalse">
+						<simple>${header.baseEnvStatus} == "false"</simple> -->
+						<log message="Base env status false" />
+						<multicast id="ReligareTravelPropRequestMSG">
+							<pipeline>
+								<to uri="direct:proposalCreateRequest" />
+							</pipeline>
+							<pipeline>
+							<process ref="AddProposerNodeProcessor" id="AddProposerNodeProcessor" />
+							<log message="Religare Travel Proposal  request sending to mapper ${body}" />
+								<to pattern="InOut" uri="xpathmapper://xpathmapdata" id="ReligareTravelXPathMapper" />
+							          <unmarshal ref="Religarejsonxml" id="ReligareJSONTOXML" />
+									<process ref="SoapReqFormatter" id="ReligareSOAPReqFormatter" />
+									<log message="Before going to CarrierProposalRequestDBStore in Religare::: ${body}"/>
+									<multicast id="ReligareTravelRequestDBStore" parallelProcessing="true">
+									<pipeline>
+									<process ref="CarrierProposalRequestDBStore" id="CarrierProposalReqDBstore" />
+								</pipeline>
+								<pipeline>
+									<log message="Religare travel proposal XML request Genrated : ${body}" />
+									
+									<to pattern="InOut" uri="webservconsumer://invoke" id="ReligareTravelProposalURL" />
+									<log message="Before going to CarrierProposalResponseDBStore in Religare::: ${body}"/>	
+									<multicast id="ReligareTravelResponseDBStore" parallelProcessing="true">
+									<pipeline>
+									<process ref="CarrierProposalResponseDBStore" id="CarrierProposalReqDBstore" />
+										</pipeline>
+										
+									<pipeline>
+									<process ref="TravlProposalResExtractProcessor" id="ReligareSoapResposneFormatter" />
+									<marshal ref="Religarehproposaljsonxml" id="PROPOSALXMLTOJSON" />
+									<log message="Religare Travel Proposal json response: ${body}"/>
+									
+									<process ref="ReligareTravelProposalResponseValidator" id="RelTravelProposalResponseValidator" />
+									<log message="Religare Travel Proposal after ReligareTravelProposalResponseValidator:::: ${body}"/>
+									<process ref="TravelProposalResHandler" id="ReligareTravelProposalResHandler" />
+									<to pattern="InOut" uri="xpathmapper://xpathmapdata" id="HDFCWebserviceResponseMapper" />
+									<log message="New mapper output:  ${body}"/>
+									<process ref="TravelProposalResProcessor" id="ReligareProposalResProcessor" />
+									<process ref="ProposalReqDBStore" id="ReligareTravelProposalReqDBStore" />
+									<process ref="TravelPolicyLogProcessor" id="ReligareTravelLogProcessor3" />
+									<process ref="ProposalResProcessor" id="HDFCErgoTravelProposalResProcessor1" />
+									<marshal>
+									<json prettyPrint="true" library="Jackson" />
+									</marshal>			
+								</pipeline>
+								</multicast>
+						</pipeline>
+						</multicast>
+					</pipeline>
+					</multicast>
+			   </when>
+			   <when id="ReligareTravelPolicyCreator">
+					<simple>${header.operationName} == "createPolicy"</simple>
+					<log message="Religare Travel : createPolicy request received" />
+					<bean ref="TravelPolicySubmitServiceImpl" method="submitPolicy"
+						id="ReligareTravelPolicyServiceRequest" />
+					<process ref="TravelPolicyLogProcessor" id="ReligareTravelPolicyLogProcessor" />
+					<multicast>
+						<pipeline>
+							<process ref="PaymentResponseUpdateProcessor" id="ReligareTravelPaymentResProcessor" />
+							<process ref="ProposalReqDBStore" id="ReligareTravelPolicyReqDBStore" />
+							<log message="Payment response added in database for ReligareTravelPolicyReqDBStore " />
+						</pipeline>
+						<pipeline>
+							<process ref="PaymentResponseValidator" id="ReligareTravelPaymentResValidator" />
+							<process ref="TravelPolicyReqProcessor" id="ReligareTravelPolicyReqProcessor" />
+							<process ref="TravelPolicyLogProcessor" id="ReligareTravelLogProcessor4" />
+							<process ref="TravelCarrierPolicyResponseProcessor" id="ReliTravelCarrierPolicyResponseProcessor" />
+							<to pattern="InOut" uri="xpathmapper://xpathmapdata" id="ReligareTravelXPathMapper" />
+							<process ref="TravelPolicyReqHandler" id="ReligareTravelPolicyReqHandler" />
+							<process ref="ProposalReqDBStore" id="ReligareTravelProposalReqDBStore" />
+							<process ref="TravelPolicyResHandler" id="ReligareTravelPolicyResHandler" />
+							<to pattern="InOut" uri="xpathmapper://xpathmapdata" id="ReligarePolicyResMapperUI" />
+							<multicast>
+								<pipeline>
+									<process ref="TravelPolicyReqHandler" id="ReligareTravelPolicyRes" />
+									<process ref="UserProfileReqProcessor" id="ReligareTravelUserProfileReqProcessor" />
+									<to pattern="InOnly" uri="activemq:queue:TravelReligarePolicyDocReqQ" id="TravelReligarePolicyDocReqQ" />
+								</pipeline>
+								<pipeline>
+									<process ref="TravelPolicyResLogProcessor" id="ReligareTravelPolicyResLogProcessor" />
+									<process ref="TravelPolicyLogProcessor" id="ReligareTravelLogProcessor5" />
+									<process ref="TravelPolicyReqHandler" id="ReligareTravelPolicyResHandler" />
+									<process ref="TravelPolicyResProcessor" id="ReligareTravelPolicyResProcessor" />
+									<bean ref="TravelPolicySubmitServiceImpl" method="sendMessage"
+										id="ReligareTravelPolicyServiceResponse" />
+								</pipeline>
+							</multicast>
+						</pipeline>
+					</multicast>
+				</when>
+			  </choice>
+    </route>
+    	<route id="TravelReligarePolicyDocReqQListener">
+			<from uri="activemq:queue:TravelReligarePolicyDocReqQ" id="ReligareTravelPolicyDocReqQ">
+				<description />
+			</from>
+			<bean ref="PolicyDocumentReqQListener" method="onMessage" id="ReligareHealthPolicyReqQListener" />
+			<log message="Religare Travel Policy Document creation request recived :  ${body}"/>
+			<process ref="PolicyDocumentReqProcessor" id="ReligarePolicyDocumentReqProcessor" />
+			<to pattern="InOut" uri="xpathmapper://xpathmapdata" id="ReligarePolicyDocXPathMapper" />
+			<unmarshal ref="Religarejsonxml" id="ReligareTravelPDFReqJSONXML" />
+			<process ref="ReligarePolicyDocSOAPRequestFormatter" id="ReligarePolicyDocSOAPRequestFormatter" />
+			<log message="Religare Travel Policy Document Carrier request :  ${body}"/>
+			<to pattern="InOut" uri="webservconsumer://invoke" id="ReligarePolicyPDFURL" />
+			<log message="Religare Travel Policy Document Carrier response :  ${body}"/>
+			<process ref="ReligarePolicyDocSOAPResponseFormatter" id="ReligarePolicyDocSOAPResponseFormatter" />
+			<process ref="PolicyDocumentResProcessor" id="ReligarePolicyDocumentResProcessor" />
+			<process ref="UserProfilePolicyUpdateProcessor" id="RelUserProfilePolicyUpdateProcessor" />
+		</route>
+    <route id="createProposalRoute">
+			<from uri="direct:proposalCreateRequest" />
+			<process ref="TravelProposalDBReqProcessor" id="ReligareTravelProposalDBReqProcessor" />
+			<to pattern="InOut" uri="xpathmapper://xpathmapdata" id="ReligareXPathMapperBASE" />
+			<process ref="ProposalReqDBStore" id="ReligareProposalReqDBStore" />
+			<process ref="ProposalResProcessor" id="ReligareTravelProposalResProcessor" />
+			<process ref="CarrierProposalServiceResLogger" id="CarrierProposalServiceResLoggerBASE" />
+			<bean ref="TravelProposalServiceImpl" method="sendMessage" id="ReligareCarProposalServiceImpl" />
+			<marshal>
+				<json prettyPrint="true" library="Jackson" />
+			</marshal>
+		</route>
+  </camelContext>
+  
+  
+</blueprint>

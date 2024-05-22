@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<blueprint xmlns="http://www.osgi.org/xmlns/blueprint/v1.0.0"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:camel="http://camel.apache.org/schema/blueprint"
+	xmlns:cxf="http://camel.apache.org/schema/blueprint/cxf" xmlns:jaxrs="http://cxf.apache.org/blueprint/jaxrs"
+	xmlns:cm="http://aries.apache.org/blueprint/xmlns/blueprint-cm/v1.0.0"
+	xsi:schemaLocation=" 
+       http://www.osgi.org/xmlns/blueprint/v1.0.0 http://www.osgi.org/xmlns/blueprint/v1.0.0/blueprint.xsd
+       http://camel.apache.org/schema/blueprint/cxf http://camel.apache.org/schema/blueprint/cxf/camel-cxf.xsd
+       http://cxf.apache.org/blueprint/jaxrs http://cxf.apache.org/schemas/blueprint/jaxrs.xsd
+       http://camel.apache.org/schema/blueprint http://camel.apache.org/schema/blueprint/camel-blueprint.xsd">
+
+	<cxf:rsServer id="paymentRequestEndpoint" address="/paymentrequest"
+		serviceClass="com.idep.service.payment.PaymentRequest"
+		loggingFeatureEnabled="true">
+		<cxf:providers>
+			<bean
+				class="org.apache.cxf.rs.security.cors.CrossOriginResourceSharingFilter" />
+		</cxf:providers>
+	</cxf:rsServer>
+
+	<bean id="PaymentProposalDataReader"
+		class="com.idep.service.payment.impl.PaymentProposalDataReader"></bean>
+	<bean id="PaymentMapperPostProcessor"
+		class="com.idep.service.payment.impl.PaymentMapperPostProcessor"></bean>
+	<bean id="PaymentRequestExceptionProcessor"
+		class="com.idep.service.payment.exception.PaymentRequestExceptionProcessor"></bean>
+
+	<camelContext streamCache="true" id="PaymentRequestService"
+		xmlns="http://camel.apache.org/schema/blueprint">
+		<onException>
+		  <exception>com.idep.service.payment.exception.ExecutionTerminator</exception>
+		  <handled>
+		    <constant>true</constant>
+		  </handled>
+		  <log message="Payment Gateway Service Terminated "/>
+		  <process ref="PaymentRequestExceptionProcessor" id="PaymentRequestExceptionProcessor" />
+		</onException>
+		  
+		<route id="PaymentRequestRoute">
+			<from uri="cxfrs:bean:paymentRequestEndpoint" id="PaymentRequestEndPoint">
+				<description />
+			</from>
+			<log message="Payment Request Service Invoked : ${body}" id="PaymentRequestLogger" />
+			<process ref="PaymentProposalDataReader" id="PaymentProposalDataReader" />
+			<log message="Payment Request created for mapper : ${body}" id="PaymentRequestMapperLogger" />
+			<to id="PaymentReqestXPathMapper" pattern="InOut" uri="xpathmapper://xpathmapdata"/>
+			<log message="Payment Request Handler Mapper : ${body}" id="PaymentResponseMapperLogger" />
+			<process ref="PaymentMapperPostProcessor" id="PaymentMapperPostProcessor" />
+		</route>
+	</camelContext>
+</blueprint>

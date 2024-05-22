@@ -1,0 +1,133 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<blueprint xmlns="http://www.osgi.org/xmlns/blueprint/v1.0.0"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xmlns:cm="http://aries.apache.org/blueprint/xmlns/blueprint-cm/v1.1.0"
+       xmlns:cxf="http://camel.apache.org/schema/blueprint/cxf"
+       xsi:schemaLocation="
+       http://www.osgi.org/xmlns/blueprint/v1.0.0 http://www.osgi.org/xmlns/blueprint/v1.0.0/blueprint.xsd
+        http://camel.apache.org/schema/blueprint/cxf http://camel.apache.org/schema/blueprint/cxf/camel-cxf.xsd
+       http://camel.apache.org/schema/blueprint http://camel.apache.org/schema/blueprint/camel-blueprint.xsd">
+
+<cxf:rsServer id="ProposalEndpoint" address="/lifepolicyproposal" serviceClass="com.idep.proposal.service.LifeProposalService" loggingFeatureEnabled="true">
+<cxf:providers>
+        <bean class="org.apache.cxf.rs.security.cors.CrossOriginResourceSharingFilter" />
+</cxf:providers>
+</cxf:rsServer>
+
+<bean id="MasterProposalReqProcessor" class="com.idep.proposal.req.processor.MasterProposalReqProcessor"/>
+<bean id="MasterPolicyReqProcessor" class="com.idep.proposal.req.processor.MasterPolicyReqProcessor"/>
+<bean id="CarrierPolicyServiceReqLogger" class="com.idep.carrier.log.processor.CarrierPolicyServiceReqLogger"/>
+<bean id="CarrierPolicyServiceResLogger" class="com.idep.carrier.log.processor.CarrierPolicyServiceResLogger"/>
+<bean id="CarrierProposalServiceReqLogger" class="com.idep.carrier.log.processor.CarrierProposalServiceReqLogger"/>
+<bean id="CarrierProposalServiceResLogger" class="com.idep.carrier.log.processor.CarrierProposalServiceResLogger"/>
+<bean id="LifePolicyLogProcessor" class="com.idep.carrier.log.processor.LifePolicyLogProcessor"/>
+<bean id="LifeProposalLogProcessor" class="com.idep.carrier.log.processor.LifeProposalLogProcessor"/>
+<bean id="LifePolicyCreatorImpl" class="com.idep.proposal.impl.service.LifePolicyCreatorImpl"/>
+<bean id="LifeProposalServiceImpl" class="com.idep.proposal.impl.service.LifeProposalServiceImpl"/>
+<bean id="LifeProposalResProcessor" class="com.idep.proposal.res.processor.LifeProposalResProcessor"/>
+<bean id="ProposalExceptionProcessor" class="com.idep.proposal.exception.processor.ProposalExceptionProcessor"/>
+<bean id="ExecutionTerminator" class="com.idep.proposal.exception.processor.ExecutionTerminator"/>
+<bean id="LifeProposalReqProcessor" class="com.idep.proposal.req.processor.LifeProposalReqProcessor"/>
+<bean id="ProposalReqDBStore" class="com.idep.proposal.data.commit.ProposalReqDBStore" />
+<bean id="LifeProposalDBReqProcessor"  class="com.idep.proposal.req.processor.LifeProposalDBReqProcessor"/>
+<bean id="LifeProposalResHandler" class="com.idep.proposal.res.processor.LifeProposalResHandler"/>
+<bean id="LifeProposalReqHandler" class="com.idep.proposal.req.processor.LifeProposalReqHandler"/>
+<bean id="CarrierProposalRequestDBStore" class="com.idep.proposal.data.commit.CarrierProposalRequestDBStore"/>
+<bean id="CarrierProposalResponseDBStore" class="com.idep.proposal.data.commit.CarrierProposalResponseDBStore"/>
+<bean id="CarrierConfigFetchingURL" class="com.idep.proposal.data.commit.CarrierConfigFetchingURL"/>
+<bean id="ProposalAddressProcessor" class="com.idep.proposal.req.processor.ProposalAddressProcessor"/>
+<!--Added for KotakLife  -->
+<bean id="KotakLifeProposalResponseValidator" class="com.idep.proposal.carrier.res.processor.KotakLifeProposalResponseValidator"/>
+<bean id="KotakLifeRequestTransformer" class="com.idep.proposal.req.transformer.KotakLifeRequestTransformer"/>
+<bean id="ProposalHeightToFeetConverter" class="com.idep.proposal.req.processor.ProposalHeightToFeetConverter"/>
+<bean id="ProposalRedirectionProcessor" class="com.idep.proposal.carrier.res.processor.ProposalRedirectionProcessor"/>
+<bean id="ProposalCityValidator" class="com.idep.proposal.req.processor.ProposalCityValidator"/>
+
+
+<bean id="LifeProposalLeadRequestCreation" class="com.idep.proposal.res.processor.LifeProposalLeadRequestCreation"/>
+<bean id="LifeProposalLeadHeaderSetter" class="com.idep.proposal.res.processor.LifeProposalLeadHeaderSetter"/>
+
+
+<cm:property-placeholder persistent-id="AMQCustomProperties"> 
+ </cm:property-placeholder>
+
+<bean id="jmsConnectionFactory"
+   class="org.apache.activemq.ActiveMQConnectionFactory">
+   <property name="brokerURL" value="${amqbroker.host}:${amqbroker.port}" />
+   <property name="userName" value="${amqbroker.username}"/>
+   <property name="password" value="${amqbroker.password}"/>
+</bean>
+
+<bean id="pooledConnectionFactory"
+   class="org.apache.activemq.pool.PooledConnectionFactory" init-method="start" destroy-method="stop">
+   <property name="maxConnections" value="${amq.maxConnections}" />
+   <property name="connectionFactory" ref="jmsConnectionFactory" />
+</bean>
+ 
+<bean id="jmsConfig"
+   class="org.apache.camel.component.jms.JmsConfiguration">
+   <property name="connectionFactory" ref="pooledConnectionFactory"/>
+   <property name="concurrentConsumers" value="${amq.concurrentConsumers}"/>
+   <property name="mapJmsMessage" value="${amq.mapJmsMessage}" />
+   <property name="maxConcurrentConsumers" value="${amq.maxConcurrentConsumers}" />
+   <property name="asyncConsumer" value="${amq.asyncConsumer}" />
+   <property name="asyncStartListener" value="${amq.asyncStartListener}" />
+</bean>
+ 
+<bean id="activemq"
+    class="org.apache.activemq.camel.component.ActiveMQComponent">
+    <property name="configuration" ref="jmsConfig"/>
+    <property name="transacted" value="${amq.transacted}"/>
+</bean>
+
+<!-- Code added for 2ndary -->
+<bean id="jmsConnectionFactorySecondary"
+   class="org.apache.activemq.ActiveMQConnectionFactory">
+   <property name="brokerURL" value="${amqbroker.secondaryhost}:${amqbroker.secondaryport}" />
+   <property name="userName" value="${amqbroker.username}"/>
+   <property name="password" value="${amqbroker.password}"/>
+</bean>
+ 
+<bean id="pooledConnectionFactorySecondary"
+   class="org.apache.activemq.pool.PooledConnectionFactory" init-method="start" destroy-method="stop">
+  <property name="maxConnections" value="${amq.maxConnections}" /> 
+   <property name="connectionFactory" ref="jmsConnectionFactorySecondary" />
+</bean>
+<bean id="jmsConfigSecondary"
+   class="org.apache.camel.component.jms.JmsConfiguration">
+   <property name="connectionFactory" ref="pooledConnectionFactorySecondary"/>
+   <property name="concurrentConsumers" value="${amq.concurrentConsumers}"/>
+   <property name="mapJmsMessage" value="${amq.mapJmsMessage}" />
+   <property name="maxConcurrentConsumers" value="${amq.maxConcurrentConsumers}" />
+   <property name="asyncConsumer" value="${amq.asyncConsumer}" />
+   <property name="asyncStartListener" value="${amq.asyncStartListener}" />  
+</bean>
+ 
+ <bean id="activemqSecondary"
+    class="org.apache.activemq.camel.component.ActiveMQComponent">
+    <property name="configuration" ref="jmsConfigSecondary"/>
+    <property name="transacted" value="${amq.transacted}"/>
+    <property name="cacheLevelName" value="${amq.cacheLevelName}" />
+</bean>
+
+<camelContext streamCache="true" id="ProposalContext" xmlns="http://camel.apache.org/schema/blueprint">
+  <route id="ProposalRoute">
+    <from uri="cxfrs:bean:ProposalEndpoint"/>
+    <choice id="PolicyProposalDecision">
+      <when id="ProposalRequest">
+        <simple>${header.operationName} == "submitProposal"</simple>
+        <log message =" All headers : ${headers}"/>
+        <process ref="MasterProposalReqProcessor" id="MasterProposalReqProcessor"/>
+        <recipientList>
+          <simple>${header.proposalService}</simple>
+        </recipientList>
+        <bean ref="LifeProposalServiceImpl" method="sendMessage" id="ProposalResponse"/>
+      </when>
+      <when id="PolicyRequest">
+        <simple>${header.operationName} == "createPolicy"</simple>
+        <process ref="MasterPolicyReqProcessor" id="MasterPolicyReqProcessor"/>
+      </when>
+    </choice>
+  </route>
+</camelContext>
+</blueprint>

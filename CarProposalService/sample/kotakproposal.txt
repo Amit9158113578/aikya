@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<blueprint xmlns="http://www.osgi.org/xmlns/blueprint/v1.0.0"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xmlns:cxf="http://camel.apache.org/schema/blueprint/cxf"
+       xsi:schemaLocation="
+       http://www.osgi.org/xmlns/blueprint/v1.0.0 http://www.osgi.org/xmlns/blueprint/v1.0.0/blueprint.xsd
+        http://camel.apache.org/schema/blueprint/cxf http://camel.apache.org/schema/blueprint/cxf/camel-cxf.xsd
+       http://camel.apache.org/schema/blueprint http://camel.apache.org/schema/blueprint/camel-blueprint.xsd">
+
+<cxf:rsServer id="KOTAKCarProposalEndpoint" address="/kotakcarpolicyproposal" serviceClass="com.sutrr.proposal.service.CarProposalService" loggingFeatureEnabled="true">
+<cxf:providers>
+        <bean class="org.apache.cxf.rs.security.cors.CrossOriginResourceSharingFilter" />
+</cxf:providers>
+</cxf:rsServer>
+
+
+<camelContext streamCache="true" id="KOTAKCarProposalContext" xmlns="http://camel.apache.org/schema/blueprint">
+  
+  <dataFormats>
+    <xmljson rootName="PartnerIntegration" forceTopLevelObject="true" skipWhitespace="true" trimSpaces="true" skipNamespaces="true" removeNamespacePrefixes="true" id="kotakproposaljsonxml"/>
+ </dataFormats>
+ 
+  <route id="KOTAKCarProposalRoute">
+    <from uri="cxfrs:bean:KOTAKCarProposalEndpoint"/>
+    <choice id="KOTAKPolicyProposalDecision">
+      <when id="KOTAKCarProposalReq">
+        <simple>${header.operationName} == "submitCarProposal"</simple>
+        <bean ref="CarProposalServiceImpl" method="submitCarProposal" id="KOTAKCarProposalSubmitReq"/>
+        <process ref="CarProposalReqProcessor" id="KOTAKCarProposalReqProcessor"/>
+        <to pattern="InOut" uri="sutrrmapper://mapdata" id="KOTAKProposalReqMapper"/>
+        <log message="sutrrMapper Proposal Request transformed Body  : ${body}"/>
+        <choice id="KOTAKSutrrMapperDecision">
+          <when id="KOTAKSutrrMapperReq">
+            <simple>${header.mapperReqFlag} == "True"</simple>
+            <process ref="CarProposalReqHandler" id="KOTAKCarProposalReqHandler"/>
+            <to pattern="InOnly" uri="activemq:queue:CarProposalRequestsQ" id="KOTAKCarProposalRequestsQueue"/>
+            <choice id="KOTAKProposalCreationDecision">
+              <when id="KOTAKInternal">
+                <simple>${header.mapperQuoteURL} == "NA"</simple>
+                <process ref="CarProposalResHandler" id="KOTAKCarProposalResHandler"/>
+                <to pattern="InOut" uri="sutrrmapper://mapdata"/>
+                <process ref="CarProposalReqHandler" id="KOTAKCarProposalResReqHandler"/>
+                <to pattern="InOnly" uri="activemq:queue:CarProposalUpdateResQ" id="KOTAKCarProposalResQueue"/>
+                <process ref="CarProposalResProcessor" id="KOTAKCarProposalResProcessor"/>
+                <bean ref="CarProposalServiceImpl" method="sendMessage" id="KOTAKCarProposalSubmit"/>
+                <log message="sutrrMapper KOTAK Proposal response transformed Body  : ${body}"/>
+                <marshal>
+                  <json prettyPrint="true" library="Jackson"/>
+                </marshal>
+              </when>
+            </choice>
+          </when>
+          <when id="KOTAKSutrrMapperError">
+            <simple>${header.mapperReqFlag} == "False"</simple>
+            <log message="SutrrMapper Error : request not formed "/>
+            <bean ref="CarProposalServiceImpl" method="submitCarProposal"/>
+            <marshal>
+              <json prettyPrint="true" library="Jackson"/>
+            </marshal>
+          </when>
+        </choice>
+      </when>
+      <when id="KOTAKCarPolicyCreator">
+        <simple>${header.operationName} == "createPolicy"</simple>
+        <log message="KOTAK : request received to create policy"/>
+        <bean ref="CarPolicyCreatorImpl" method="createCarPolicy" id="KOTAKCarPolicyCreate"/>
+        <process ref="CarPolicyReqProcessor" id="KOTAKCarPolicyReqProcessor"/>
+        <to pattern="InOut" uri="sutrrmapper://mapdata" id="KOTAKPolicyReqMapper"/>
+        <log message="sutrrMapper policy Request transformed Body  : ${body}"/>
+        <process ref="CarPolicyReqHandler" id="KOTAKCarPolicyReqHandler"/>
+        <log message="message sent to Q for policy update  : ${body}"/>
+        <to pattern="InOnly" uri="activemq:queue:CarProposalUpdateResQ" id="KOTAKCarPolicyResQueue"/>
+        <to pattern="InOnly" uri="activemq:queue:UserProfileQ" id="KOTAKUserProfileQueue"/>
+        <process ref="CarPolicyResHandler" id="KOTAKCarPolicyResHandler"/>
+        <to pattern="InOut" uri="sutrrmapper://mapdata" id="KOTAKPolicyResMapperUI"/>
+        <log message="mapping introduced here to send only relevant fields to UI"/>
+        <process ref="CarPolicyResProcessor" id="KOTAKCarPolicyResProcessor"/>
+        <multicast parallelProcessing="true">
+        <pipeline>
+        	<log message="call kotak webservice to update proposal"/>
+        	<process ref="KotakReqFormatter" id="KotakReqFormatter"/>
+        	<unmarshal id="KOTAKPROPOSALJSONTOXML" ref="kotakproposaljsonxml"/>
+        	<log message="KOTAK Proposal XML Request : ${body}"/>
+        	<process ref="KotakProposalSender" id="KotakProposalSender"/>
+        	<recipientList parallelProcessing="true" timeout="20000" stopOnException="false" >
+	          	<simple>${header.kotakProposalService}</simple>
+	        </recipientList>
+	        <log message="KOTAK Proposal Webservice Response : ${body}"/>
+        </pipeline>
+        <pipeline>
+        	<bean ref="CarPolicyCreatorImpl" method="sendMessage" id="KOTAKCarPolicySubmit"/>
+        </pipeline>
+        </multicast>
+        <log message="response send to UI : ${body}"/>
+        <marshal>
+          <json prettyPrint="true" library="Jackson"/>
+        </marshal>
+      </when>
+    </choice>
+  </route>
+</camelContext>
+
+</blueprint>

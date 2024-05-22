@@ -1,0 +1,243 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<blueprint xmlns="http://www.osgi.org/xmlns/blueprint/v1.0.0"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:camel="http://camel.apache.org/schema/blueprint"
+	xmlns:cxf="http://camel.apache.org/schema/blueprint/cxf" xmlns:jaxws="http://cxf.apache.org/blueprint/jaxws"
+	xmlns:cm="http://aries.apache.org/blueprint/xmlns/blueprint-cm/v1.0.0"
+	xmlns:camelcxf="http://camel.apache.org/schema/blueprint/cxf"
+	xsi:schemaLocation="
+       http://www.osgi.org/xmlns/blueprint/v1.0.0 http://www.osgi.org/xmlns/blueprint/v1.0.0/blueprint.xsd
+       http://camel.apache.org/schema/blueprint/cxf http://camel.apache.org/schema/blueprint/cxf/camel-cxf.xsd
+       http://cxf.apache.org/blueprint/jaxws http://cxf.apache.org/schemas/blueprint/jaxws.xsd
+       http://camel.apache.org/schema/blueprint  http://camel.apache.org/schema/blueprint/camel-blueprint-2.12.0.xsd">
+
+
+	<cxf:rsServer id="sugarCRMEndPoint" address="/sugarcrmservice"
+		serviceClass="com.idep.sugar.rest.service.SugarCRMService"
+		loggingFeatureEnabled="true">
+		<cxf:providers>
+			<bean
+				class="org.apache.cxf.rs.security.cors.CrossOriginResourceSharingFilter" />
+		</cxf:providers>
+	</cxf:rsServer>
+
+	<bean id="myDeadLetterErrorHandler" class="org.apache.camel.builder.DeadLetterChannelBuilder">
+		<property name="deadLetterUri" value="activemq:queue:DLQ" />
+		<property name="redeliveryPolicy" ref="myRedeliveryPolicyConfig" />
+	</bean>
+
+	<bean id="myRedeliveryPolicyConfig" class="org.apache.camel.processor.RedeliveryPolicy">
+		<property name="maximumRedeliveries" value="5" />
+		<property name="redeliveryDelay" value="20000" />
+	</bean>
+
+	<cm:property-placeholder persistent-id="AMQCustomProperties">
+	</cm:property-placeholder>
+
+	<bean id="jmsConnectionFactory" class="org.apache.activemq.ActiveMQConnectionFactory">
+		<property name="brokerURL" value="${amqbroker.host}:${amqbroker.port}" />
+		<property name="userName" value="${amqbroker.username}" />
+		<property name="password" value="${amqbroker.password}" />
+	</bean>
+
+	<bean id="pooledConnectionFactory" class="org.apache.activemq.pool.PooledConnectionFactory"
+		init-method="start" destroy-method="stop">
+		<property name="maxConnections" value="${amq.maxConnections}" />
+		<property name="connectionFactory" ref="jmsConnectionFactory" />
+	</bean>
+
+	<bean id="jmsConfig" class="org.apache.camel.component.jms.JmsConfiguration">
+		<property name="connectionFactory" ref="pooledConnectionFactory" />
+		<property name="concurrentConsumers" value="${amq.concurrentConsumers}" />
+		<property name="mapJmsMessage" value="${amq.mapJmsMessage}" />
+		<property name="maxConcurrentConsumers" value="${amq.maxConcurrentConsumers}" />
+		<property name="asyncConsumer" value="${amq.asyncConsumer}" />
+		<property name="asyncStartListener" value="${amq.asyncStartListener}" />
+	</bean>
+
+	<bean id="activemq" class="org.apache.activemq.camel.component.ActiveMQComponent">
+		<property name="configuration" ref="jmsConfig" />
+		<!-- if we are using transacted then enable CACHE_CONSUMER (if not using 
+			XA) to run faster see more details at: http://camel.apache.org/jms <property 
+			name="transacted" value="${amq.transacted}"/> <property name="cacheLevelName" 
+			value="${amq.cacheLevelName}" /> <to pattern="InOnly" uri="activemq:queue:CouchBase" 
+			id="CouchBaseQ"/> -->
+
+	</bean>
+
+	<bean id="SugarCRMServiceImpl" class="com.idep.sugar.impl.rest.SugarCRMServiceImpl" />
+	<bean id="LeadResponse" class="com.idep.sugar.impl.rest.LeadResponse" />
+	<bean id="RecordMessageProcessor" class="com.idep.sugarcrm.req.processor.RecordMessageProcessor" />
+	<bean id="LeadMessageProcessor" class="com.idep.sugarcrm.req.processor.LeadMessageProcessor" />
+	<bean id="LeadResponseProcessor" class="com.idep.sugarcrm.res.processor.LeadResponseProcessor" />
+	<bean id="RecordResponseProcessor" class="com.idep.sugarcrm.res.processor.RecordResponseProcessor" />
+	<bean id="TicketMessageProcessor" class="com.idep.sugarcrm.req.processor.TicketMessageProcessor" />
+	<bean id="TicketResponseProcessor" class="com.idep.sugarcrm.res.processor.TicketResponseProcessor" />
+	<bean id="LeadExceptionProcessor" class="com.idep.sugar.impl.rest.LeadExceptionProcessor" />
+	<bean id="LeadReqStoreFileProcessor" class="com.idep.lead.req.fileProcess.LeadReqStoreFileProcessor" />
+	<bean id="ExecutionTerminator" class="com.idep.sugar.impl.rest.ExecutionTerminator" />
+	<bean id="URLMessageProcessor" class="com.idep.sugarcrm.req.processor.URLMessageProcessor" />
+	<bean id="LeadMaintenanceQueueListener" class="com.idep.queue.listener.LeadMaintenanceQueueListener" />
+	<bean id="LeadProfileCreation" class="com.idep.lead.profile.create.LeadProfileCreation" />
+	<bean id="LeadProfileUpdation" class="com.idep.lead.profile.update.LeadProfileUpdation" />
+	<bean id="LeadProfileQuoteUpdation" class="com.idep.lead.profile.update.LeadProfileQuoteUpdation" />
+	<bean id="LeadProfileProposalUpdation"
+		class="com.idep.lead.profile.update.LeadProfileProposalUpdation" />
+	<bean id="LeadProfileDetailsUpdation" class="com.idep.lead.profile.update.LeadProfileDetailsUpdation" />
+	<bean id="LeadProfileProposalDetailsUpdation"
+		class="com.idep.lead.profile.update.LeadProfileProposalDetailsUpdation" />
+	<bean id="LobQuoteRequestProcessor" class="com.idep.lead.req.fileProcess.LobQuoteRequestProcessor" />
+	<bean id="ProposalCreationProcessor" class="com.idep.lead.req.fileProcess.ProposalCreationProcessor" />
+
+
+	<bean id="UpdateURLResponseProcessor"
+		class="com.idep.sugarcrm.res.processor.UpdateURLResponseProcessor" />
+	<!-- Reduces the graceful shutdown time from 300 to 30 seconds. -->
+	<bean id="shutdownStrategy" class="org.apache.camel.impl.DefaultShutdownStrategy">
+		<property name="timeout" value="30" />
+	</bean>
+
+
+	<camelContext id="SugarCRMServiceContext"
+		xmlns="http://camel.apache.org/schema/blueprint">
+		<onException>
+			<exception>com.idep.sugar.impl.rest.ExecutionTerminator</exception>
+			<exception>java.lang.Exception</exception>
+			<handled>
+				<constant>true</constant>
+
+			</handled>
+
+			<log message="SugarCRM service Exception occure for Lead" />
+			<process ref="LeadExceptionProcessor" customId="true"
+				id="SugarCrmServiceExcepProcessor" />
+		</onException>
+
+
+		<route id="SugarCRMServiceRoute">
+			<from uri="cxfrs:bean:sugarCRMEndPoint" id="SugarCRMEndPoint" />
+			<choice id="CRMDecision">
+				<when id="LeadCreationReq">
+					<simple id="collectLeadData">${header.operationName} == "collectLeadData"</simple>
+					<log id="createLeadlog" message="Create Lead request recived collectLeadData : ${body}" />
+					<bean ref="SugarCRMServiceImpl" method="collectLeadData" id="CreateLeadBean" />
+					<process ref="LeadMessageProcessor" id="LeadMessageProcessor" />
+					<to pattern="InOnly" uri="activemq:queue:leadInfoRequestQ" id="leadInfoQueue" />
+					<when id="createQuoteDelay">
+						<simple>${header.createQuoteDelay} == "Y"</simple>
+						<delay>
+							<camel:constant>8000</camel:constant>
+						</delay>
+					</when>
+					<process ref="LeadResponseProcessor" id="LeadResponseProcessor" />
+				</when>
+				<when id="TicketCreationReq">
+					<simple id="collectTicketData">${header.operationName} == "collectTicketData"</simple>
+					<log id="collectTicketDataLog" message=" request recived collectTicketData : ${body}" />
+					<bean ref="SugarCRMServiceImpl" method="collectTicketData" id="CreateTicketBean" />
+					<process ref="TicketMessageProcessor" id="TicketMessageProcessor" />
+					<to pattern="InOnly" uri="activemq:queue:Tickets" id="TicketDataQ" />
+					<process ref="TicketResponseProcessor" id="TicketResponseProcessor" />
+					<!-- <marshal> <json prettyPrint="true" library="Jackson" /> </marshal> -->
+				</when>
+				<when id="proposalReadRequest">
+					<simple id="getLeadForProposal">${header.operationName} == "getLeadForProposal"</simple>
+					<bean ref="SugarCRMServiceImpl" method="collectRecordData" id="proposalReadBean" />
+					<process ref="ProposalCreationProcessor" id="ProposalCreationProcessor" />
+					<when id="mappingRequired">
+						<simple>${header.requiredMapping} == "Y"</simple>
+						<to pattern="InOut" uri="xpathmapper://xpathmapdata" id="BhartiAXACarXPathMapperBASE" />
+					</when>
+					<log message="save xpathmapper://xpathmapdata response :${body}"></log>
+					<process ref="RecordResponseProcessor" id="RecordResponseProcessor" />
+				</when>
+				<when id="UploadImagURL">
+					<simple id="UploadImagURLCondition">${header.operationName} == "collectURL"</simple>
+					<log id="updateImagURLLog" message=" request recived updateImagURL : ${body}" />
+					<bean ref="SugarCRMServiceImpl" method="collectURL" id="collectURLMethod" />
+					<process ref="URLMessageProcessor" id="URLMessageProcessorClass" />
+					<to pattern="InOnly" uri="activemq:queue:UpdateImageURLCRMQ" id="RecordDataQ" />
+					<process ref="UpdateURLResponseProcessor" id="UpdateURLResponseProcessorClass" />
+					<marshal>
+						<json prettyPrint="true" library="Jackson" />
+					</marshal>
+				</when>
+			</choice>
+		</route>
+		<route id="LeadProfileUpdation">
+			<from uri="activemq:queue:P365LeadUpdationQ" id="FromMasterService"></from>
+			<log message="In P365LeadUpdationQ Blueprint : ${body} " />
+			<bean ref="LeadMaintenanceQueueListener" method="onMessage"
+				id="BeanUpdateLeadQ" />
+			<log message="After LeadUpdationQueueListener in Blueprint : ${body} " />
+			<process ref="LeadProfileUpdation" id="LeadProfileUpdation" />
+			<log message="After LeadProfileUpdation in Blueprint : ${body} " />
+		</route>
+		<route id="LeadProfileQuoteUpdation">
+			<from uri="activemq:queue:P365LeadQuoteUpdationQ" id="FromQuoteService"></from>
+			<log message="In LeadProfileQuoteUpdation Blueprint : ${body} " />
+			<bean ref="LeadMaintenanceQueueListener" method="onMessage"
+				id="BeanUpdateLeadQ2" />
+			<log message="After LeadQuoteUpdationQueueListener in Blueprint : ${body} " />
+			<process ref="LeadProfileQuoteUpdation" id="LeadProfileQuoteUpdation" />
+			<choice id="Response">
+				<when id="Success">
+					<simple>${header.reqFlag} == "True"</simple>
+					<log message="Before QuoteXPathMapper  in Blueprint : ${body} " />
+					<to pattern="InOut" uri="xpathmapper://xpathmapdata" id="QuoteXPathMapper" />
+					<log message="After QuoteXPathMapper in Blueprint : ${body} " />
+					<process ref="LeadProfileDetailsUpdation" id="LeadProfileDetailsQuoteUpdation" />
+					<log message="After LeadProfileDetailsUpdation in Blueprint : ${body} " />
+				</when>
+			</choice>
+		</route>
+		<route id="LeadProfileProposalUpdation">
+			<from uri="activemq:queue:P365LeadProposalUpdationQ" id="FromProposalService"></from>
+			<log message="In LeadProfileProposalUpdation Blueprint : ${body} " />
+			<bean ref="LeadMaintenanceQueueListener" method="onMessage"
+				id="BeanUpdateLeadQ3" />
+			<log message="After LeadQuoteUpdationQueueListener in Blueprint : ${body} " />
+			<process ref="LeadProfileProposalUpdation" id="LeadProfileProposalUpdation" />
+			<choice id="PropResponse">
+				<when id="PropSuccess">
+					<simple>${header.reqFlag} == "True"</simple>
+					<log message="Before ProposalXPathMapper in Blueprint : ${body} " />
+					<to pattern="InOut" uri="xpathmapper://xpathmapdata" id="ProposalXPathMapper" />
+					<log message="After ProposalXPathMapper in Blueprint : ${body} " />
+					<process ref="LeadProfileProposalDetailsUpdation" id="LeadProfileProposalDetailsUpdation" />
+				</when>
+			</choice>
+		</route>
+		<route id="leadCreationRoute">
+			<from uri="activemq:queue:leadInfoRequestQ" id="FromProposalService"></from>
+			<bean ref="LeadMaintenanceQueueListener" method="onMessage" id="LeadRequest" />
+			<multicast id="LeadMessgemulticast" parallelProcessing="true">
+				<pipeline id="quoteCalc">
+					<process ref="LobQuoteRequestProcessor" id="LobQuoteRequestProcessor" />
+				</pipeline>
+				<pipeline id="MSGtoFile">
+					<log id="storefile" message="storing into file" />
+					<process ref="LeadReqStoreFileProcessor" id="LeadReqStoreFileProcessorId" />
+				</pipeline>
+				<pipeline id="LeadMSGtoP365LeadMaintenance">
+					<log message="In LeadProfileCreation in Blueprint : ${body} " />
+					<process ref="LeadProfileCreation" id="LeadProfileCreation" />
+				</pipeline>
+				<pipeline id="LeadMSGtoQueue">
+					<log message=" Blueprint for iMATQueue Body: ${body} " />
+					<log message=" Blueprint for iMATQueue Header: " />
+					<choice id="QueueDecision">
+						<when id="requestSourceValidation">
+							<simple id="requestSourceValidation">${header.iMATRenewalFlag} == "Y"</simple>
+							<log id="sendingtoLeadsQ" message="storing into activemq:queue:iMATQ" />
+							<to pattern="InOnly" uri="activemq:queue:iMATQ" id="IMATQ" />
+						</when>
+					</choice>
+				</pipeline>
+
+				<!-- <pipeline id="LobQuoteRequest"> <process ref="LobQuoteRequestProcessor" 
+					id="LobQuoteRequestProcessor" /> </pipeline> -->
+			</multicast>
+
+		</route>
+	</camelContext>
+</blueprint>

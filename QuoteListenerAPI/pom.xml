@@ -1,0 +1,247 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>com.idep</groupId>
+  <artifactId>QuoteListener</artifactId>
+  <packaging>bundle</packaging>
+  <version>10.4.0-SNAPSHOT</version>
+  <name>QuoteListener</name>
+  
+  <properties>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+    <maven.compiler.target>1.7</maven.compiler.target>
+    <maven.compiler.source>1.7</maven.compiler.source>
+      <cxf-version>3.0.2</cxf-version>
+    <version.maven-surefire-plugin>2.15</version.maven-surefire-plugin>
+    <version.maven-bundle-plugin>2.3.7</version.maven-bundle-plugin>
+    <maven-resources-plugin-version>2.6</maven-resources-plugin-version>
+    <build-helper-maven-plugin-version>1.9.1</build-helper-maven-plugin-version>
+    <skipTests>true</skipTests>
+  </properties>
+  <repositories>
+    <repository>
+      <id>release.fusesource.org</id>
+      <name>FuseSource Release Repository</name>
+      <url>https://repo.fusesource.com/nexus/content/repositories/releases</url>
+      <snapshots>
+        <enabled>false</enabled>
+      </snapshots>
+      <releases>
+        <enabled>true</enabled>
+      </releases>
+    </repository>
+  </repositories>
+  
+  
+  <pluginRepositories>
+    <pluginRepository>
+      <id>release.fusesource.org</id>
+      <name>FuseSource Release Repository</name>
+      <url>https://repo.fusesource.com/nexus/content/repositories/releases</url>
+      <snapshots>
+        <enabled>false</enabled>
+      </snapshots>
+      <releases>
+        <enabled>true</enabled>
+      </releases>
+    </pluginRepository>      
+  </pluginRepositories>
+  
+  <dependencies>
+  
+  
+   <dependency>
+      <groupId>org.apache.camel</groupId>
+      <artifactId>camel-core</artifactId>
+      <version>2.12.0.redhat-610379</version>
+      <scope>provided</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.camel</groupId>
+      <artifactId>camel-jaxb</artifactId>
+      <version>2.12.0.redhat-610379</version>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.camel</groupId>
+      <artifactId>camel-jackson</artifactId>
+      <version>2.12.0.redhat-610379</version>
+    </dependency>
+    <dependency>
+      <groupId>com.sun.jersey</groupId>
+      <artifactId>jersey-client</artifactId>
+      <version>1.8</version>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.camel</groupId>
+      <artifactId>camel-http4</artifactId>
+      <version>2.21.0</version>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.camel</groupId>
+      <artifactId>camel-cxf</artifactId>
+      <version>2.12.0.redhat-610379</version>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.cxf</groupId>
+      <artifactId>cxf-rt-transports-http-jetty</artifactId>
+      <version>2.7.0.redhat-610379</version>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.cxf</groupId>
+      <artifactId>cxf-bundle-jaxrs</artifactId>
+      <version>2.7.18</version>
+      <type>bundle</type>
+    </dependency>
+    <dependency>
+      <groupId>com.couchbase.client</groupId>
+      <artifactId>core-io</artifactId>
+      <version>1.2.3</version>
+    </dependency>
+    <dependency>
+      <groupId>com.couchbase.client</groupId>
+      <artifactId>java-client</artifactId>
+      <version>2.2.2</version>
+    </dependency>
+	<dependency>
+	 <groupId>com.idep</groupId>
+	 <artifactId>couchbaseAPI</artifactId>
+	 <version>2.1.19-SNAPSHOT</version>
+	</dependency>
+
+    <dependency>
+      <groupId>org.apache.camel</groupId>
+      <artifactId>camel-netty4-http</artifactId>
+      <version>2.21.0</version>
+    </dependency>
+    <dependency>
+      <groupId>io.reactivex</groupId>
+      <artifactId>rxjava</artifactId>
+      <version>1.0.15</version>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.camel</groupId>
+      <artifactId>camel-netty</artifactId>
+      <version>2.15.1.redhat-620133</version>
+    </dependency>
+    
+    
+    <dependency>
+      <groupId>org.apache.activemq</groupId>
+      <artifactId>activemq-camel</artifactId>
+      <version>5.11.0.redhat-620133</version>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.camel</groupId>
+      <artifactId>camel-jms</artifactId>
+      <version>2.21.0</version>
+    </dependency>
+    <dependency>
+	<groupId>javax.jms</groupId>
+	<artifactId>javax.jms-api</artifactId>
+	<version>2.0</version>
+</dependency>
+    
+     	<!-- <dependency>
+	    <groupId>org.apache.geronimo.specs</groupId>
+   		 <artifactId>geronimo-jms_1.1_spec</artifactId>
+   		 <version>1.1.1</version>
+		</dependency>
+  		<dependency>
+			<groupId>com.googlecode.json-simple</groupId>
+			<artifactId>json-simple</artifactId>
+			<version>1.1</version>
+  </dependency> -->
+              
+  </dependencies>
+  
+  <build>
+    <defaultGoal>install</defaultGoal>
+     <resources>
+      <resource>
+        <directory>src/main/resources</directory>
+        <filtering>true</filtering>
+      </resource>
+    </resources>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <version>2.5.1</version>
+        
+      </plugin>
+      
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-resources-plugin</artifactId>
+        <version>2.6</version>
+       <executions>
+          <execution>
+            <id>filter</id>
+            <phase>generate-resources</phase>
+            <goals>
+              <goal>resources</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
+      
+       <!-- to generate the MANIFEST-FILE of the bundle -->
+       <plugin>
+        <groupId>org.apache.felix</groupId>
+        <artifactId>maven-bundle-plugin</artifactId>
+        <version>3.2.0</version>
+        <extensions>true</extensions>
+        <executions>
+          <execution>
+           <id>bundle-manifest</id>
+           <phase>process-classes</phase>
+           <goals>
+               <goal>manifest</goal>
+           </goals>
+          </execution>
+        </executions>
+        <configuration>
+           <instructions>
+            <Bundle-SymbolicName>${project.groupId}.${project.artifactId}</Bundle-SymbolicName>
+            <Bundle-Name>${project.name}</Bundle-Name>
+            <Bundle-Version>${project.version}</Bundle-Version>
+         <Import-Package>
+         	com.couchbase.client.java,
+         	org.apache.log4j,
+			com.couchbase.client.java.env,
+			com.couchbase.client.java.document,
+			com.couchbase.client.java.document.json,
+			com.couchbase.client.java.error,
+			com.couchbase.client.java.query,
+			com.couchbase.client.java.view,
+			com.couchbase.client.java.query.consistency,
+			com.couchbase.client.deps.io.netty.util.internal,
+			com.couchbase.client.deps.io.netty.handler.codec.memcache.binary,
+			com.couchbase.client.core.message.kv,
+			com.couchbase.client.core.message.query,
+			com.couchbase.client.core.message.view,
+			com.couchbase.client.deps.io.netty.handler.codec.http,
+			com.couchbase.client.deps.io.netty.handler.codec.memcache,
+			javax.jms;version=2.0,
+			com.fasterxml.jackson.core,
+			com.fasterxml.jackson.databind,
+			com.fasterxml.jackson.databind.node,
+			com.idep.couchbase.api.impl,
+			com.idep.couchbase.api.util,
+			rx.functions;version=1.0.15,
+			rx.observables,
+			rx;version=1.0.15,
+			rx.schedulers;version=1.0.15
+			</Import-Package>
+             <Export-Package>
+             com.idep.*
+            </Export-Package>
+          </instructions>
+        </configuration>
+      </plugin>
+  
+  
+ </plugins>
+  </build>
+
+</project>

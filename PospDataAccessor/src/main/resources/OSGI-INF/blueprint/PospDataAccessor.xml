@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<blueprint xmlns="http://www.osgi.org/xmlns/blueprint/v1.0.0"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xmlns:camel="http://camel.apache.org/schema/blueprint"
+       xmlns:cxf="http://camel.apache.org/schema/blueprint/cxf"
+	   xmlns:cm="http://aries.apache.org/blueprint/xmlns/blueprint-cm/v1.1.0"
+       xmlns:jaxrs="http://cxf.apache.org/blueprint/jaxrs" 
+       xsi:schemaLocation=" 
+       http://www.osgi.org/xmlns/blueprint/v1.0.0 http://www.osgi.org/xmlns/blueprint/v1.0.0/blueprint.xsd
+       http://camel.apache.org/schema/blueprint/cxf http://camel.apache.org/schema/blueprint/cxf/camel-cxf.xsd
+       http://cxf.apache.org/blueprint/jaxrs http://cxf.apache.org/schemas/blueprint/jaxrs.xsd
+       http://camel.apache.org/schema/blueprint http://camel.apache.org/schema/blueprint/camel-blueprint.xsd">
+
+<cxf:rsServer id="pospReadDocEndpoint"  address="/readposp" serviceClass="com.idep.posp.service.PospDataAccessor" loggingFeatureEnabled="true" >
+<cxf:providers>
+        <bean class="org.apache.cxf.rs.security.cors.CrossOriginResourceSharingFilter" />
+ </cxf:providers>
+ </cxf:rsServer>
+ <bean id="pospProofileshutdownStrategy" class="org.apache.camel.impl.DefaultShutdownStrategy">
+        <property name="timeout" value="20"/>
+</bean>
+
+<!-- <bean id="http" class="org.apache.camel.component.http.HttpComponent">
+    <property name="camelContext" ref="PospReadDocContext"/>
+    <property name="httpConnectionManager" ref="PospReadDocHttpConnectionManager"/>
+</bean>
+
+<bean id="https" class="org.apache.camel.component.http.HttpComponent">
+    <property name="camelContext" ref="PospReadDocContext"/>
+    <property name="httpConnectionManager" ref="PospReadDocHttpConnectionManager"/>
+</bean> -->
+ 
+<bean id="PospReadDocHttpConnectionManager" class="org.apache.commons.httpclient.MultiThreadedHttpConnectionManager">
+    <property name="params" ref="PospReadHttpConnectionManagerParams"/>
+</bean>
+ 
+<bean id="PospReadHttpConnectionManagerParams" class="org.apache.commons.httpclient.params.HttpConnectionManagerParams">
+    <property name="defaultMaxConnectionsPerHost" value="5"/>
+    <property name="maxTotalConnections" value="100" />
+    <property name="connectionTimeout" value="10000" />
+    <property name="soTimeout" value="60000"/>     	
+</bean>
+<bean id="PospDataAccessor" class="com.idep.posp.service.PospDataAccessor"/>
+<bean id="ReadProductData" class="com.idep.posp.impl.ReadProductData"/>
+<bean id="ReadServerConfig" class="com.idep.posp.impl.ReadServerConfig"/>
+<bean id="PospDataAccessorImpl" class="com.idep.posp.impl.PospDataAccessorImpl"/>
+<bean id="ResposneMessage" class="com.idep.posp.response.ResposneMessage"/>
+<bean id="GetPospDoc" class="com.idep.posp.impl.GetPospDoc"/>
+<bean id="updatePospDoc" class="com.idep.posp.impl.updatePospDoc"/>
+
+ <camelContext id="PospReadDocContext" xmlns="http://camel.apache.org/schema/blueprint">
+  <route id="PospReadDocRoute">
+    <from uri="cxfrs:bean:pospReadDocEndpoint" />
+     <log message="posp Read documennt service request recived" />
+          <choice id="POSPDecision">
+      <when id="POSPProductDataReq">
+        <simple>${header.operationName} == "readProductDataDoc"</simple>
+          <process ref="ReadProductData" id="ReadProductDataProcess"/>
+          <process ref="ResposneMessage" id="ResposneMessageProduct"/>
+          	<bean ref="PospDataAccessorImpl" method="sendMessage" />
+          	 <log message="posp PrductData Read document service Execution completed" />
+        </when>
+         <when id="POSPConfigDataReq">
+        <simple>${header.operationName} == "readServerConfigDoc"</simple>
+          <process ref="ReadServerConfig" id="ReadServerConfigProcess"/>
+          <process ref="ResposneMessage" id="ResposneMessageConfig"/>
+          	<bean ref="PospDataAccessorImpl" method="sendMessage" />
+          	<log message="posp ServerConfig Read document service Execution completed" />
+        </when>
+		  <when id="POSPgetDoc">
+        <simple>${header.operationName} == "getPospDoc"</simple>
+          <process ref="GetPospDoc" id="GetPospDoc"/>
+          <process ref="ResposneMessage" id="ResposneMessageConfig"/>
+          	<bean ref="PospDataAccessorImpl" method="sendMessage" />
+          	<log message="posp ServerConfig Read document service Execution completed" />
+        </when>
+          <when id="POSPUpdateDoc">
+    		    <simple>${header.operationName} == "updatePospDoc"</simple>
+        	<process ref="updatePospDoc" id="updatePospDoc"/>
+           <process ref="ResposneMessage" id="ResposneMessageConfig"/>
+          	<bean ref="PospDataAccessorImpl" method="sendMessage" />
+          	<log message="posp ServerConfig Read document service Execution completed" />
+        </when>
+        </choice>   
+     	</route>
+     	</camelContext>
+</blueprint>

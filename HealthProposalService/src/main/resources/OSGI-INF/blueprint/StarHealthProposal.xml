@@ -1,0 +1,211 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<blueprint xmlns="http://www.osgi.org/xmlns/blueprint/v1.0.0"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:cxf="http://camel.apache.org/schema/blueprint/cxf"
+	xsi:schemaLocation="
+       http://www.osgi.org/xmlns/blueprint/v1.0.0 http://www.osgi.org/xmlns/blueprint/v1.0.0/blueprint.xsd
+        http://camel.apache.org/schema/blueprint/cxf http://camel.apache.org/schema/blueprint/cxf/camel-cxf.xsd
+       http://camel.apache.org/schema/blueprint http://camel.apache.org/schema/blueprint/camel-blueprint.xsd">
+
+	<cxf:rsServer id="StarHealthProposalEndpoint" address="/StarHealthPolicyProposal"
+		serviceClass="com.idep.proposal.service.ProposalSubmitService"
+		loggingFeatureEnabled="true">
+		<cxf:providers>
+			<bean
+				class="org.apache.cxf.rs.security.cors.CrossOriginResourceSharingFilter" />
+		</cxf:providers>
+	</cxf:rsServer>
+
+	<bean id="StarHealthProposalhutdownStrategy" class="org.apache.camel.impl.DefaultShutdownStrategy">
+		<property name="timeout" value="30" />
+	</bean>
+
+	<camelContext streamCache="true" threadNamePattern="HLTHPROPSTAR"
+		id="StarHealthProposalContext" xmlns="http://camel.apache.org/schema/blueprint">
+		<onException>
+			<exception>java.net.SocketTimeoutException</exception>
+			<exception>java.net.SocketException</exception>
+			<handled>
+				<constant>true</constant>
+			</handled>
+			<log message="Star Health proposal service seems to be down" />
+			<process ref="ProposalExceptionProcessor" customId="true"
+				id="StarHealthPropExcepProcessor" />
+		</onException>
+		<onException>
+			<exception>com.idep.policy.exception.processor.ExecutionTerminator</exception>
+			<exception>java.lang.Exception</exception>
+			<handled>
+				<constant>true</constant>
+			</handled>
+			<log message="Star Health proposal service Exception occure" />
+			<process ref="ProposalExceptionProcessor" customId="true"
+				id="StarHealthPropExcepProcessor" />
+		</onException>
+		<route id="StarProposalSubmitterRoute">
+			<from uri="cxfrs:bean:StarHealthProposalEndpoint" />
+			<choice id="StarHealthPolicyProposalDecision">
+				<when id="StarHealthProposalReq">
+					<simple>${header.operationName} == "submitHealthProposal"</simple>
+					<bean ref="ProposalSubmitServiceImpl" method="submitProposal"
+						id="StarHealthProposalSubmit" />
+					<process ref="ProposalReqProcessor" id="StarHealthProposalReqProcessor" />
+					<process ref="HealthProposalReqLogProcessor" id="StarHealthProReqLogProcessor" />
+					<process ref="HealthPolicyLogProcessor" id="StarHealthLogProcessor1" />
+					<!-- <when id="baseEnvStatusTrue">
+						<simple>${header.baseEnvStatus} == "true"</simple>
+						<log message="Base env status true" />
+						<to uri="direct:proposalCreateRequest" />
+					</when>
+					<when id="baseEnvStatusFalse">
+						<simple>${header.baseEnvStatus} == "false"</simple>
+						<log message="Base env status false" />-->
+						<multicast id="ProposalMessageSender">
+							<pipeline id="ProposalQMessage">
+								<to uri="direct:proposalCreateRequest" />
+							</pipeline>
+							<pipeline> 
+								<process ref="StarHealthProposerDataProcessor" id="StarHealthProposerDataProcessor" />
+								<process ref="StarHealthGetCityProcessor" id="StarHealthGetCityProcessor" />
+								<process ref="HealthPolicyLogProcessor" id="StarHealthLogProcessor2" />
+								<to pattern="InOut" uri="xpathmapper://xpathmapdata" id="StarHealthReqXPathMapper" />
+								<process ref="StarHealthInsuredMemberProcessor" id="StarHealthInsuredMemberProcessor" />
+								<process ref="HealthProposalServiceReqLogProcessor" id="StarServiceReqLogger" />
+								<process ref="HealthPolicyLogProcessor" id="StarHealthLogProcessor3" />
+								<to pattern="InOut" uri="webservconsumer://invoke" id="StarHealthProposalService" />
+								<process ref="HealthProposalServiceResLogProcessor" id="ABHIServiceResLogProcessor" />
+								<process ref="StarCarrierProposalResponseHandler" id="StarHealthProposalResponseHandler" />
+								<choice id="StarHealthCarrierProposalResp">
+									<when id="StarHealthProposalSuccessResp">
+										<simple>${header.reqFlag} == "True"</simple>
+											<to pattern="InOut" uri="xpathmapper://xpathmapdata" id="StarHealthTokenReqXPathMapper" />
+											<process ref="StarHealthTokenRefProcessor" id="StarHealthTokenRefProcessor" />
+											<process ref="HealthProposalServiceReqLogProcessor" id="StarServiceReqLoggerTokan" />
+											<process ref="HealthPolicyLogProcessor" id="StarHealthLogProcessor4" />
+											<to pattern="InOut" uri="webservconsumer://invoke" id="StarHealthTokenGenService" />
+											<process ref="HealthProposalServiceResLogProcessor" id="ABHIServiceResLogProcessor" />
+											<process ref="StarHealthTokenResProcessor" id="StarHealthTokenResProcessor" />
+											<process ref="ProposalResHandler" id="StarHealthProposalResHandlerProcess" />
+											<to pattern="InOut" uri="mapper://mapdata" />
+											<process ref="ProposalReqHandler" id="StarHealthProposalMapperResponse" />
+											<process ref="ProposalReqDBStore" id="StarHealthProposalResDBStore" />
+											<process ref="ProposalResProcessor" id="StarHealthProposalResProcessor" />
+											<bean ref="ProposalSubmitServiceImpl" method="sendMessage" />
+											<marshal>
+												<json prettyPrint="true" library="Jackson" />
+											</marshal>
+								</when>
+								<when id="HDFCHealthProposalFailureResp">
+									<simple>${header.reqFlag} == "False"</simple>
+										<log message="Star Error response received " />
+										<bean ref="ProposalSubmitServiceImpl" method="submitProposal" id="StarHealthProposalResponse"/>
+								</when>
+							</choice>	
+							 </pipeline>
+						</multicast>
+					<!--</when> -->
+				</when>
+				<when id="StarHealthvalidatePaymentStatus">
+					<simple>${header.operationName} == "validatePaymentStatus"</simple>
+					<log message="StarHealth validatePaymentStatus request received  ${body}" />
+					<bean ref="PolicySubmitServiceImpl" method="validatePaymentStatus"
+						id="validatePaymentStatusRequest" />
+					<process ref="StarPaymentReqProcessor" id="StarPaymentReqProcessor" />
+					<process ref="StarHealthPolicyReqProcessor" id="StarHealthPolicyReqProcessor" />
+					<process ref="HealthPolicyLogProcessor" id="StarHealthLogProcessor5" />
+					<to pattern="InOut" uri="xpathmapper://xpathmapdata" id="StarReqXPathMapper" />
+					<process ref="StarHealthPolicyurlProcessor" id="StarHealthPolicyurlProcessor" />
+					<log
+						message="Star Health Policy Carrier Service Validate Payment Status :  ${body}" />
+					<to pattern="InOut" uri="webservconsumer://invoke" id="StarPolicyURL" />
+					<log message="Star Health Policy Status Service Response :  ${body}" />
+					<process ref="StarHealthPaymentResProcessor" id="StarHealthPaymentResProcessor" />
+					<bean ref="PolicySubmitServiceImpl" method="sendMessage"
+						id="StarHealthPolicyServiceResponse" />
+				</when>
+				<when id="StarHealthPolicyCreator">
+					<simple>${header.operationName} == "createPolicy"</simple>
+					<log message="StarHealth policy create request received" />
+					<bean ref="PolicySubmitServiceImpl" method="submitPolicy"
+						id="StarHealthPolicyServiceRequest" />
+					<process ref="HealthPolicyLogProcessor" id="StarHealthPolicyLogProcessor" />
+					<multicast>
+						<pipeline>
+							<process ref="PaymentResponseUpdateProcessor" id="StarHealthPaymentResProcessor" />
+							<process ref="ProposalReqDBStore" id="StarHealthPolicyResDBStore" />
+							<log message="Payment response added in database for StarHealth " />
+						</pipeline>
+						<pipeline>
+							<process ref="PaymentResponseValidator" id="StarHealthPaymentResValidator" />
+								<choice id="StarPaymentResponse">
+						      <when id="StarPaymentResponseReq">
+							    <simple>${header.reqFlag} == "True"</simple>
+							<process ref="HealthPolicyReqProcessor" id="StarHealthPolicyReqProcessor" />
+							<process ref="StarHealthPolicyReqProcessor" id="StarHealthPolicyReqProcessor" />
+							<process ref="HealthPolicyLogProcessor" id="StarHealthLogProcessor6" />
+							<to pattern="InOut" uri="xpathmapper://xpathmapdata" id="StarReqXPathMapper" />
+							<process ref="StarHealthPolicyurlProcessor" id="StarHealthPolicyurlProcessor" />
+							<process ref="HealthPolicyServiceReqLog" id="StarHealthPolicyServiceReqLog" />
+							<process ref="HealthPolicyLogProcessor" id="StarHealthLogProcessor7" />
+							<to pattern="InOut" uri="webservconsumer://invoke" id="StarPolicyURL" />
+							<log message="Star Health Policy Status Service Response :  ${body}" />
+							<process ref="StarHealthPolicyResProcessor" id="StarHealthPolicyresProcessor" />
+							<log
+								message="Star Health Policy Status Carrier Service Response sent to mapper :  ${body}" />
+							<to pattern="InOut" uri="mapper://mapdata" id="StarHealthPolicyReqMapper" />
+							<process ref="HealthPolicyReqHandler" id="StarHealthPolicyReqHandler" />
+							<process ref="ProposalReqDBStore" id="StarHealthPolicyRESDBStore" />
+							<process ref="HealthPolicyResHandler" id="StarHealthPolicyResHandler" />
+							<to pattern="InOut" uri="mapper://mapdata" id="StarHealthPolicyResMapperUI" />
+							<process ref="HealthPolicyReqHandler" id="StarHealthPolicyRes" />
+							<multicast>
+								<pipeline>
+									<process ref="UserProfileReqProcessor" id="StarHLTHUserProfileReqProcessor" />
+									<to pattern="InOnly" uri="activemq:queue:StarHealthPolicyDocReqQ"
+										id="StarPolicyDocReqQ" />
+								</pipeline>
+								<pipeline>
+									<process ref="HealthPolicyResProcessor" id="StarHealthPolicyResProcessor" />
+									<bean ref="PolicySubmitServiceImpl" method="sendMessage"
+										id="StarHealthPolicyServiceResponse" />
+									<!-- <marshal> <json prettyPrint="true" library="Jackson"/> </marshal> -->
+								</pipeline>
+							</multicast>
+						    </when>
+							   <when id="StarProposalUPDTError">
+									<simple>${header.reqFlag} == "False"</simple>
+									<log message="Star payment error " />
+									<bean ref="PolicySubmitServiceImpl" method="sendMessage" />
+							</when>
+						   </choice>
+						</pipeline>
+					</multicast>
+				</when>
+			</choice>
+		</route>
+		<route id="STARHealthPolicyDocReqQListener">
+			<from uri="activemq:queue:StarHealthPolicyDocReqQ" id="StarHealthPolicyDocReqQ">
+				<description />
+			</from>
+			<bean ref="PolicyDocumentReqQListener" method="onMessage"
+				id="StarHealthPolicyReqQListener" />
+			<process ref="HealthPolicyDocDownloadLogReq" id="StarDocDownloadLogReq" />
+			<process ref="HealthPolicyLogProcessor" id="StarHealthLogProcessor8" />
+			<process ref="StarHealthDocumentReqProcessor" id="StarPolicyDocumentReqProcessor" />
+			<process ref="HealthPolicyDocDownloadLogRes" id="StarDocDownloadLogRes" />
+		</route>
+			<route id="createProposalRoute">
+			<from uri="direct:proposalCreateRequest" />
+			<log message="Star Health proposal request sent to database" />
+			<process ref="HealthProposalDBReqProcessor" id="StarHealthProposalDBReqProcessorBASE" />
+			<process ref="HealthPolicyLogProcessor" id="StarHealthLogProcessor9" />
+			<to pattern="InOut" uri="xpathmapper://xpathmapdata" id="StarPolicies365BikeXPathMapperBASE" />
+			<process ref="ProposalReqDBStore" id="StarProposalReqDBStoreBASE" />
+			<process ref="ProposalResProcessor" id="StarHealthProposalResProcessorBASE" />
+			<bean ref="ProposalSubmitServiceImpl" method="sendMessage"
+				id="StarHealthHealthProposalResponseBASE" />
+			<marshal>
+				<json prettyPrint="true" library="Jackson" />
+			</marshal>
+		</route> 
+	</camelContext>
+</blueprint>
